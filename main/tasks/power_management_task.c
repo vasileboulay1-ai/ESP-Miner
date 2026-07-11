@@ -28,8 +28,11 @@
 
 // ---- Gouverneur thermique de frequence (ajuste la frequence selon la temp ASIC) ----
 #define GOV_TEMP_HIGH       63.0f   // au-dessus : on baisse la frequence
-#define GOV_TEMP_LOW        57.0f   // en dessous : on remonte la frequence
-#define GOV_TEMP_EMERGENCY  65.0f   // plafond dur : baisse renforcee
+#define GOV_TEMP_LOW        61.0f   // en dessous (ET puissance OK) : on remonte
+#define GOV_TEMP_EMERGENCY  65.0f   // plafond dur temperature : baisse renforcee
+#define GOV_POWER_HIGH      24.3f   // au-dessus : on baisse la frequence (Watts)
+#define GOV_POWER_LOW       23.5f   // en dessous (ET temp OK) : on remonte (Watts)
+#define GOV_POWER_EMERGENCY 25.0f   // plafond dur puissance : baisse renforcee (Watts)
 #define GOV_FREQ_MIN        400.0f  // frequence plancher (MHz)
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
@@ -265,13 +268,14 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             gov_counter = 0;
             float t = power_management->chip_temp_avg;
             if (power_management->chip_temp2_avg > t) t = power_management->chip_temp2_avg;
+            float p = power_management->power;
 
-            if (t >= GOV_TEMP_EMERGENCY && gov_effective_freq > GOV_FREQ_MIN) {
-                gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence : baisse renforcee
-            } else if (t >= GOV_TEMP_HIGH && gov_effective_freq > GOV_FREQ_MIN) {
-                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud : on baisse
-            } else if (t <= GOV_TEMP_LOW && gov_effective_freq < gov_target_freq) {
-                gov_effective_freq += GOV_FREQ_STEP;            // au frais : on remonte vers le plafond
+            if ((t >= GOV_TEMP_EMERGENCY || p >= GOV_POWER_EMERGENCY) && gov_effective_freq > GOV_FREQ_MIN) {
+                gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence temp OU puissance : baisse renforcee
+            } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH) && gov_effective_freq > GOV_FREQ_MIN) {
+                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud OU trop de watts : on baisse
+            } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && gov_effective_freq < gov_target_freq) {
+                gov_effective_freq += GOV_FREQ_STEP;            // frais ET marge de puissance : on remonte
             }
 
             if (gov_effective_freq < GOV_FREQ_MIN) gov_effective_freq = GOV_FREQ_MIN;
@@ -280,7 +284,7 @@ void POWER_MANAGEMENT_task(void * pvParameters)
 
         // Applique la frequence effective quand elle change.
         if (gov_effective_freq != last_asic_frequency) {
-            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC -> ASIC %g MHz (plafond %g MHz)", power_management->chip_temp_avg, gov_effective_freq, gov_target_freq);
+            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC pow %.1fW -> ASIC %g MHz (plafond %g MHz)", power_management->chip_temp_avg, power_management->power, gov_effective_freq, gov_target_freq);
 
             power_management->frequency_value = gov_effective_freq;
             power_management->expected_hashrate = expected_hashrate(GLOBAL_STATE);
