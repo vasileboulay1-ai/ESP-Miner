@@ -26,6 +26,14 @@
 
 #define ASIC_REDUCTION 100.0
 
+// ---- Gouverneur thermique de frequence (ajuste la frequence selon la temp ASIC) ----
+#define GOV_TEMP_HIGH       63.0f   // au-dessus : on baisse la frequence
+#define GOV_TEMP_LOW        57.0f   // en dessous : on remonte la frequence
+#define GOV_TEMP_EMERGENCY  65.0f   // plafond dur : baisse renforcee
+#define GOV_FREQ_MIN        400.0f  // frequence plancher (MHz)
+#define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
+#define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
+
 static const char * TAG = "power_management";
 
 static void mining_stop(GlobalState * GLOBAL_STATE)
@@ -126,6 +134,12 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     uint16_t last_known_asic_voltage = 0;
     float last_known_asic_frequency = 0.0;
     bool is_paused = false;
+
+    // Gouverneur thermique : le plafond = la frequence NVS voulue par l'utilisateur ;
+    // la frequence effective est ajustee selon la temperature ASIC.
+    float gov_target_freq = power_management->frequency_value;
+    float gov_effective_freq = power_management->frequency_value;
+    int gov_counter = 0;
 
     while (1) {
         if (GLOBAL_STATE->SELF_TEST_MODULE.is_finished) {
@@ -238,16 +252,43 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             last_core_voltage = core_voltage;
         }
 
-        if (asic_frequency != last_asic_frequency) {
-            ESP_LOGI(TAG, "New ASIC frequency requested: %g MHz (current: %g MHz)", asic_frequency, last_asic_frequency);
-            
-            power_management->frequency_value = asic_frequency;
+        // ---- GOUVERNEUR THERMIQUE ----
+        // 'asic_frequency' (depuis NVS) = plafond voulu par l'utilisateur.
+        // Si l'utilisateur change la frequence via l'API/interface, on resynchronise le plafond.
+        if (asic_frequency != gov_target_freq) {
+            gov_target_freq = asic_frequency;
+            if (gov_effective_freq > gov_target_freq) gov_effective_freq = gov_target_freq;
+        }
+
+        // Ajuste la frequence effective selon la temperature, toutes les ~10s (hors self-test).
+        if (!GLOBAL_STATE->SELF_TEST_MODULE.is_active && ++gov_counter >= GOV_INTERVAL_CYCLES) {
+            gov_counter = 0;
+            float t = power_management->chip_temp_avg;
+            if (power_management->chip_temp2_avg > t) t = power_management->chip_temp2_avg;
+
+            if (t >= GOV_TEMP_EMERGENCY && gov_effective_freq > GOV_FREQ_MIN) {
+                gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence : baisse renforcee
+            } else if (t >= GOV_TEMP_HIGH && gov_effective_freq > GOV_FREQ_MIN) {
+                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud : on baisse
+            } else if (t <= GOV_TEMP_LOW && gov_effective_freq < gov_target_freq) {
+                gov_effective_freq += GOV_FREQ_STEP;            // au frais : on remonte vers le plafond
+            }
+
+            if (gov_effective_freq < GOV_FREQ_MIN) gov_effective_freq = GOV_FREQ_MIN;
+            if (gov_effective_freq > gov_target_freq) gov_effective_freq = gov_target_freq;
+        }
+
+        // Applique la frequence effective quand elle change.
+        if (gov_effective_freq != last_asic_frequency) {
+            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC -> ASIC %g MHz (plafond %g MHz)", power_management->chip_temp_avg, gov_effective_freq, gov_target_freq);
+
+            power_management->frequency_value = gov_effective_freq;
             power_management->expected_hashrate = expected_hashrate(GLOBAL_STATE);
 
             ASIC_set_frequency(GLOBAL_STATE);
             ASIC_set_nonce_space(GLOBAL_STATE);
-            
-            last_asic_frequency = asic_frequency;
+
+            last_asic_frequency = gov_effective_freq;
         }
 
         // Check for changing of overheat mode
