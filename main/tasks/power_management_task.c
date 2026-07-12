@@ -37,6 +37,20 @@
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
 
+// ---- v4 : auto-tuner de tension (apprend la tension mini stable par frequence) ----
+// Perturbe-et-observe : on grignote la tension vers le bas ; si le taux d'erreur ASIC
+// monte, on remonte franchement et on verrouille ce plancher. Auto-calibration sans PC.
+#define TUNE_ENABLE         1        // 1 = apprentissage actif ; 0 = table "propre" v3 figee
+#define TUNE_BUCKETS        25       // paliers de frequence memorisables (400..1000 MHz par 25)
+#define TUNE_ERR_GOOD       1.0f     // taux d'erreur ASIC <= : marge -> on tente de baisser (%)
+#define TUNE_ERR_BAD        2.0f     // taux d'erreur ASIC >= : instable -> on remonte + verrouille (%)
+#define TUNE_STEP_DOWN      5        // pas de descente prudent (mV)
+#define TUNE_STEP_UP        20       // pas de remontee franc = securite (mV)
+#define TUNE_MARGIN         10       // marge conservee au-dessus du plancher trouve (mV)
+#define TUNE_VOLT_FLOOR     1000     // tension mini absolue, garde-fou dur (mV)
+#define TUNE_MAX_UNDERVOLT  70       // on ne descend jamais plus de 70 mV sous la table "propre" (mV)
+#define TUNE_SETTLE_CYCLES  300      // 300 x 100ms = ~30s de stabilisation avant chaque decision
+
 static const char * TAG = "power_management";
 
 // V3 : tension "propre" (mV) pour une frequence donnee (auto-undervolt par palier).
@@ -48,6 +62,15 @@ static float gov_voltage_for_freq(float freq)
     if (v < 1120.0f) v = 1120.0f;
     if (v > 1240.0f) v = 1240.0f;
     return v;
+}
+
+// v4 : convertit une frequence (MHz) en index de palier pour la table apprise.
+static int gov_bucket(float freq)
+{
+    int b = (int)((freq - GOV_FREQ_MIN) / GOV_FREQ_STEP + 0.5f);
+    if (b < 0) b = 0;
+    if (b >= TUNE_BUCKETS) b = TUNE_BUCKETS - 1;
+    return b;
 }
 
 static void mining_stop(GlobalState * GLOBAL_STATE)
@@ -154,6 +177,12 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     float gov_target_freq = power_management->frequency_value;
     float gov_effective_freq = power_management->frequency_value;
     int gov_counter = 0;
+
+    // v4 : tension APPRISE par palier de frequence (0 = pas encore appris -> table "propre").
+    static uint16_t gov_learned_mv[TUNE_BUCKETS] = {0};
+    static uint16_t gov_floor_mv[TUNE_BUCKETS] = {0}; // tension connue comme instable (0 = inconnu)
+    int tune_settle = TUNE_SETTLE_CYCLES;             // temps de stabilisation restant
+    int last_bucket = -1;
 
     while (1) {
         if (GLOBAL_STATE->SELF_TEST_MODULE.is_finished) {
@@ -286,11 +315,59 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             if (gov_effective_freq > gov_target_freq) gov_effective_freq = gov_target_freq;
         }
 
-        // V3 : tension "propre" cible pour la frequence effective courante
-        // (ou tension par defaut pendant le self-test).
-        uint16_t gov_voltage = GLOBAL_STATE->SELF_TEST_MODULE.is_active
-                                 ? GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_voltage_mv
-                                 : (uint16_t) gov_voltage_for_freq(gov_effective_freq);
+        // ---- V4 : AUTO-TUNER DE TENSION ----
+        // Pendant le self-test : tension par defaut. Sinon : tension apprise par palier,
+        // grignotee vers le bas tant que le taux d'erreur ASIC reste sain.
+        uint16_t gov_voltage;
+        if (GLOBAL_STATE->SELF_TEST_MODULE.is_active) {
+            gov_voltage = GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_voltage_mv;
+        } else {
+            int b = gov_bucket(gov_effective_freq);
+            uint16_t baseline = (uint16_t) gov_voltage_for_freq(gov_effective_freq);
+
+            // Premiere visite de ce palier -> on part de la table "propre" v3 (connue stable).
+            if (gov_learned_mv[b] == 0) gov_learned_mv[b] = baseline;
+
+            // La frequence a change de palier -> on laisse le hashrate/erreur se stabiliser.
+            if (b != last_bucket) {
+                last_bucket = b;
+                tune_settle = TUNE_SETTLE_CYCLES;
+            }
+
+#if TUNE_ENABLE
+            // Apprentissage : une decision toutes les ~30s, apres stabilisation.
+            if (tune_settle > 0) {
+                tune_settle--;
+            } else {
+                float err = sys_module->error_percentage;
+                uint16_t v = gov_learned_mv[b];
+
+                // Bornes de descente : garde-fou dur, limite vs table "propre", plancher verrouille.
+                uint16_t min_allowed = TUNE_VOLT_FLOOR;
+                uint16_t soft_min = (baseline > TUNE_MAX_UNDERVOLT) ? baseline - TUNE_MAX_UNDERVOLT : TUNE_VOLT_FLOOR;
+                if (soft_min > min_allowed) min_allowed = soft_min;
+                if (gov_floor_mv[b] > 0 && gov_floor_mv[b] + TUNE_MARGIN > min_allowed) min_allowed = gov_floor_mv[b] + TUNE_MARGIN;
+
+                if (err >= TUNE_ERR_BAD) {
+                    // Instable : on verrouille ce niveau comme plancher et on remonte franchement.
+                    gov_floor_mv[b] = v;
+                    uint16_t up = v + TUNE_STEP_UP;
+                    if (up > baseline + 30) up = baseline + 30;   // plafond raisonnable
+                    if (up > 1250) up = 1250;
+                    gov_learned_mv[b] = up;
+                    ESP_LOGW(TAG, "[TUNER] %g MHz : erreurs %.2f%% -> remonte %u -> %u mV (plancher verrouille a %u)", gov_effective_freq, err, v, up, v);
+                    tune_settle = TUNE_SETTLE_CYCLES;
+                } else if (err <= TUNE_ERR_GOOD && (int)v - TUNE_STEP_DOWN >= (int)min_allowed) {
+                    // Sain et marge disponible : on tente de baisser d'un cran.
+                    gov_learned_mv[b] = v - TUNE_STEP_DOWN;
+                    ESP_LOGI(TAG, "[TUNER] %g MHz : erreurs %.2f%% OK -> essai %u -> %u mV", gov_effective_freq, err, v, (uint16_t)(v - TUNE_STEP_DOWN));
+                    tune_settle = TUNE_SETTLE_CYCLES;
+                }
+                // sinon : zone morte -> point d'equilibre trouve, on garde.
+            }
+#endif
+            gov_voltage = gov_learned_mv[b];
+        }
 
         // Applique la tension AVANT la frequence (stabilite en montee de frequence).
         if (gov_voltage != last_core_voltage) {
