@@ -30,14 +30,25 @@
 #define GOV_TEMP_HIGH       63.0f   // au-dessus : on baisse la frequence
 #define GOV_TEMP_LOW        61.0f   // en dessous (ET puissance OK) : on remonte
 #define GOV_TEMP_EMERGENCY  65.0f   // plafond dur temperature : baisse renforcee
-#define GOV_POWER_HIGH      24.3f   // au-dessus : on baisse la frequence (Watts)
-#define GOV_POWER_LOW       23.5f   // en dessous (ET temp OK) : on remonte (Watts)
-#define GOV_POWER_EMERGENCY 25.0f   // plafond dur puissance : baisse renforcee (Watts)
+#define GOV_POWER_HIGH      29.3f   // au-dessus : on baisse la frequence (Watts)
+#define GOV_POWER_LOW       28.3f   // en dessous (ET temp OK) : on remonte (Watts)
+#define GOV_POWER_EMERGENCY 29.9f   // plafond dur puissance : baisse renforcee (Watts)
 #define GOV_FREQ_MIN        400.0f  // frequence plancher (MHz)
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
 
 static const char * TAG = "power_management";
+
+// V3 : tension "propre" (mV) pour une frequence donnee (auto-undervolt par palier).
+// Table lineaire calee sur nos mesures : 740 MHz -> 1185 mV, 900 MHz -> ~1205 mV.
+// A affiner apres flash en observant le taux d'erreur. Borne dure a 1240 mV.
+static float gov_voltage_for_freq(float freq)
+{
+    float v = 1185.0f + (freq - 740.0f) * 0.125f;
+    if (v < 1120.0f) v = 1120.0f;
+    if (v > 1240.0f) v = 1240.0f;
+    return v;
+}
 
 static void mining_stop(GlobalState * GLOBAL_STATE)
 {
@@ -244,16 +255,9 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             }
         }
 
-        uint16_t core_voltage = GLOBAL_STATE->SELF_TEST_MODULE.is_active
-                                 ? GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_voltage_mv
-                                 : nvs_config_get_u16(NVS_CONFIG_ASIC_VOLTAGE);
+        // V3 : la tension n'est plus lue depuis NVS ici -> c'est le gouverneur qui
+        // la fixe automatiquement selon la frequence (table "propre"), plus bas.
         float asic_frequency = nvs_config_get_float(NVS_CONFIG_ASIC_FREQUENCY);
-
-        if (core_voltage != last_core_voltage) {
-            ESP_LOGI(TAG, "setting new vcore voltage to %umV", core_voltage);
-            VCORE_set_voltage(GLOBAL_STATE, (double) core_voltage / 1000.0);
-            last_core_voltage = core_voltage;
-        }
 
         // ---- GOUVERNEUR THERMIQUE ----
         // 'asic_frequency' (depuis NVS) = plafond voulu par l'utilisateur.
@@ -282,9 +286,21 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             if (gov_effective_freq > gov_target_freq) gov_effective_freq = gov_target_freq;
         }
 
+        // V3 : tension "propre" cible pour la frequence effective courante
+        // (ou tension par defaut pendant le self-test).
+        uint16_t gov_voltage = GLOBAL_STATE->SELF_TEST_MODULE.is_active
+                                 ? GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_voltage_mv
+                                 : (uint16_t) gov_voltage_for_freq(gov_effective_freq);
+
+        // Applique la tension AVANT la frequence (stabilite en montee de frequence).
+        if (gov_voltage != last_core_voltage) {
+            VCORE_set_voltage(GLOBAL_STATE, (double) gov_voltage / 1000.0);
+            last_core_voltage = gov_voltage;
+        }
+
         // Applique la frequence effective quand elle change.
         if (gov_effective_freq != last_asic_frequency) {
-            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC pow %.1fW -> ASIC %g MHz (plafond %g MHz)", power_management->chip_temp_avg, power_management->power, gov_effective_freq, gov_target_freq);
+            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC pow %.1fW -> ASIC %g MHz @ %umV (plafond %g MHz)", power_management->chip_temp_avg, power_management->power, gov_effective_freq, gov_voltage, gov_target_freq);
 
             power_management->frequency_value = gov_effective_freq;
             power_management->expected_hashrate = expected_hashrate(GLOBAL_STATE);
