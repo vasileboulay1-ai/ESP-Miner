@@ -3,6 +3,7 @@
 #include "freertos/task.h"
 #include "global_state.h"
 #include "nvs_config.h"
+#include "nvs.h"
 #include "vcore.h"
 #include "thermal.h"
 #include "power.h"
@@ -27,8 +28,8 @@
 #define ASIC_REDUCTION 100.0
 
 // ---- Gouverneur thermique de frequence (ajuste la frequence selon la temp ASIC) ----
-#define GOV_TEMP_HIGH       63.0f   // au-dessus : on baisse la frequence
-#define GOV_TEMP_LOW        61.0f   // en dessous (ET puissance OK) : on remonte
+#define GOV_TEMP_HIGH       64.0f   // au-dessus : on baisse la frequence (v5 : 63->64, zone morte elargie)
+#define GOV_TEMP_LOW        60.0f   // en dessous (ET puissance OK) : on remonte (v5 : 61->60, anti-oscillation)
 #define GOV_TEMP_EMERGENCY  65.0f   // plafond dur temperature : baisse renforcee
 #define GOV_POWER_HIGH      29.3f   // au-dessus : on baisse la frequence (Watts)
 #define GOV_POWER_LOW       28.3f   // en dessous (ET temp OK) : on remonte (Watts)
@@ -50,6 +51,11 @@
 #define TUNE_VOLT_FLOOR     1000     // tension mini absolue, garde-fou dur (mV)
 #define TUNE_MAX_UNDERVOLT  70       // on ne descend jamais plus de 70 mV sous la table "propre" (mV)
 #define TUNE_SETTLE_CYCLES  300      // 300 x 100ms = ~30s de stabilisation avant chaque decision
+// ---- v5 : anti-oscillation + persistance ----
+#define TUNE_SEED_MAX_DIST  3        // amorce un nouveau palier depuis un voisin appris a <=3 paliers (75 MHz)
+#define TUNE_SAVE_INTERVAL_CYCLES 18000 // 18000 x 100ms = ~30 min : throttle des ecritures NVS (usure flash)
+#define GOV_NVS_NAMESPACE   "governor"  // namespace NVS isole (n'interfere pas avec "main")
+#define GOV_NVS_KEY         "vtable"     // blob = [learned[25] , floor[25]] en uint16_t
 
 static const char * TAG = "power_management";
 
@@ -71,6 +77,31 @@ static int gov_bucket(float freq)
     if (b < 0) b = 0;
     if (b >= TUNE_BUCKETS) b = TUNE_BUCKETS - 1;
     return b;
+}
+
+// v5 : amorce un nouveau palier a partir du voisin appris le plus proche.
+// On reporte le MEME undervolt (baseline - appris) que le voisin, applique a la baseline
+// du palier courant. Evite de repartir de la baseline haute -> supprime l'oscillation du
+// gouverneur (les deux paliers voisins tournent alors "frais"). Borne comme le tuner.
+static uint16_t gov_seed_voltage(int b, uint16_t baseline_b, const uint16_t *learned)
+{
+    for (int d = 1; d <= TUNE_SEED_MAX_DIST; d++) {
+        for (int s = -1; s <= 1; s += 2) {
+            int n = b + s * d;
+            if (n < 0 || n >= TUNE_BUCKETS) continue;
+            if (learned[n] == 0) continue;                 // voisin pas encore appris
+            float base_n = gov_voltage_for_freq(GOV_FREQ_MIN + n * GOV_FREQ_STEP);
+            int offset = (int) base_n - (int) learned[n];  // undervolt appris par le voisin
+            if (offset < 0) offset = 0;
+            int seed = (int) baseline_b - offset;
+            int soft = (int) baseline_b - TUNE_MAX_UNDERVOLT;
+            int lo = (TUNE_VOLT_FLOOR > soft) ? TUNE_VOLT_FLOOR : soft;
+            if (seed < lo) seed = lo;
+            if (seed > (int) baseline_b) seed = baseline_b;
+            return (uint16_t) seed;
+        }
+    }
+    return baseline_b;                                      // aucun voisin appris -> baseline sure
 }
 
 static void mining_stop(GlobalState * GLOBAL_STATE)
@@ -183,6 +214,25 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     static uint16_t gov_floor_mv[TUNE_BUCKETS] = {0}; // tension connue comme instable (0 = inconnu)
     int tune_settle = TUNE_SETTLE_CYCLES;             // temps de stabilisation restant
     int last_bucket = -1;
+    int tune_save_counter = 0;                        // v5 : compteur pour throttler les ecritures NVS
+    bool tune_dirty = false;                          // v5 : table modifiee depuis la derniere sauvegarde ?
+
+    // v5 : recharge la table de tension apprise depuis la NVS (persiste entre reboots).
+    {
+        nvs_handle_t nh;
+        if (nvs_open(GOV_NVS_NAMESPACE, NVS_READONLY, &nh) == ESP_OK) {
+            uint16_t blob[TUNE_BUCKETS * 2];
+            size_t sz = sizeof(blob);
+            if (nvs_get_blob(nh, GOV_NVS_KEY, blob, &sz) == ESP_OK && sz == sizeof(blob)) {
+                for (int i = 0; i < TUNE_BUCKETS; i++) {
+                    gov_learned_mv[i] = blob[i];
+                    gov_floor_mv[i]   = blob[TUNE_BUCKETS + i];
+                }
+                ESP_LOGI(TAG, "[TUNER] table de tension rechargee depuis la NVS");
+            }
+            nvs_close(nh);
+        }
+    }
 
     while (1) {
         if (GLOBAL_STATE->SELF_TEST_MODULE.is_finished) {
@@ -325,8 +375,9 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             int b = gov_bucket(gov_effective_freq);
             uint16_t baseline = (uint16_t) gov_voltage_for_freq(gov_effective_freq);
 
-            // Premiere visite de ce palier -> on part de la table "propre" v3 (connue stable).
-            if (gov_learned_mv[b] == 0) gov_learned_mv[b] = baseline;
+            // Premiere visite de ce palier -> on AMORCE depuis le voisin deja appris (v5)
+            // (au lieu de repartir de la baseline haute) pour eviter l'oscillation.
+            if (gov_learned_mv[b] == 0) gov_learned_mv[b] = gov_seed_voltage(b, baseline, gov_learned_mv);
 
             // La frequence a change de palier -> on laisse le hashrate/erreur se stabiliser.
             if (b != last_bucket) {
@@ -357,11 +408,13 @@ void POWER_MANAGEMENT_task(void * pvParameters)
                     gov_learned_mv[b] = up;
                     ESP_LOGW(TAG, "[TUNER] %g MHz : erreurs %.2f%% -> remonte %u -> %u mV (plancher verrouille a %u)", gov_effective_freq, err, v, up, v);
                     tune_settle = TUNE_SETTLE_CYCLES;
+                    tune_dirty = true;
                 } else if (err <= TUNE_ERR_GOOD && (int)v - TUNE_STEP_DOWN >= (int)min_allowed) {
                     // Sain et marge disponible : on tente de baisser d'un cran.
                     gov_learned_mv[b] = v - TUNE_STEP_DOWN;
                     ESP_LOGI(TAG, "[TUNER] %g MHz : erreurs %.2f%% OK -> essai %u -> %u mV", gov_effective_freq, err, v, (uint16_t)(v - TUNE_STEP_DOWN));
                     tune_settle = TUNE_SETTLE_CYCLES;
+                    tune_dirty = true;
                 }
                 // sinon : zone morte -> point d'equilibre trouve, on garde.
             }
@@ -397,6 +450,27 @@ void POWER_MANAGEMENT_task(void * pvParameters)
         }
 
         VCORE_check_fault(GLOBAL_STATE);
+
+        // v5 : sauvegarde NVS throttlee (au plus 1 ecriture / ~30 min, et seulement si change).
+        if (++tune_save_counter >= TUNE_SAVE_INTERVAL_CYCLES) {
+            tune_save_counter = 0;
+            if (tune_dirty) {
+                uint16_t blob[TUNE_BUCKETS * 2];
+                for (int i = 0; i < TUNE_BUCKETS; i++) {
+                    blob[i] = gov_learned_mv[i];
+                    blob[TUNE_BUCKETS + i] = gov_floor_mv[i];
+                }
+                nvs_handle_t nh;
+                if (nvs_open(GOV_NVS_NAMESPACE, NVS_READWRITE, &nh) == ESP_OK) {
+                    if (nvs_set_blob(nh, GOV_NVS_KEY, blob, sizeof(blob)) == ESP_OK) {
+                        nvs_commit(nh);
+                        ESP_LOGI(TAG, "[TUNER] table de tension sauvegardee en NVS");
+                    }
+                    nvs_close(nh);
+                }
+                tune_dirty = false;
+            }
+        }
 
         // looper:
         vTaskDelay(POLL_RATE / portTICK_PERIOD_MS);
