@@ -514,6 +514,10 @@ void wifi_init(void * pvParameters)
         /* Start Wi-Fi */
         ESP_ERROR_CHECK(esp_wifi_start());
 
+        /* v3.1 : puissance d'emission WiFi au maximum (84 = ~21 dBm) pour un peu plus de portee.
+           (l'economie d'energie est deja desactivee via WIFI_PS_NONE ci-dessus) */
+        esp_wifi_set_max_tx_power(84);
+
         ESP_LOGI(TAG, "wifi_init_sta finished.");
     }
 }
