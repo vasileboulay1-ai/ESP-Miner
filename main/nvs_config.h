@@ -82,6 +82,13 @@ typedef enum {
     NVS_CONFIG_SELF_TEST_TEMP_TARGET,
     NVS_CONFIG_SELF_TEST_TEMP_WARMUP,
     NVS_CONFIG_SELF_TEST_TEMP_MAX,
+
+    // v7 : notification WhatsApp (via CallMeBot) sur bloc trouve / record
+    NVS_CONFIG_WA_PHONE,
+    NVS_CONFIG_WA_APIKEY,
+    NVS_CONFIG_WA_NOTIFY_BLOCK,
+    NVS_CONFIG_WA_NOTIFY_RECORD,
+
     NVS_CONFIG_COUNT
 } NvsConfigKey;
 

@@ -34,6 +34,7 @@
 #include "filesystem.h"
 #include "work_queue.h"
 #include "hashrate_monitor_task.h"
+#include "notify_whatsapp.h"
 
 static const char * TAG = "system";
 
@@ -356,6 +357,15 @@ void SYSTEM_notify_found_nonce(GlobalState * GLOBAL_STATE, double diff, uint8_t 
         module->block_found++;
         module->show_new_block = true;
         ESP_LOGI(TAG, "FOUND BLOCK!!!!!!!!!!!!!!!!!!!!!! %f >= %f (count: %d)", diff, network_diff, module->block_found);
+
+        // v7 : alerte WhatsApp "BLOC TROUVE" (le graal). Ignoree si WhatsApp non configure.
+        if (nvs_config_get_bool(NVS_CONFIG_WA_NOTIFY_BLOCK)) {
+            char wa_msg[160];
+            snprintf(wa_msg, sizeof(wa_msg),
+                     "BLOC TROUVE !!! Ton Bitaxe vient de trouver un bloc (difficulte %s) !!! FELICITATIONS !",
+                     module->best_session_diff_string);
+            notify_whatsapp_send(wa_msg);
+        }
     }
 
     if ((uint64_t) diff <= module->best_nonce_diff) {
@@ -369,6 +379,15 @@ void SYSTEM_notify_found_nonce(GlobalState * GLOBAL_STATE, double diff, uint8_t 
     suffixString((uint64_t) diff, module->best_diff_string, DIFF_STRING_SIZE, 0);
 
     ESP_LOGI(TAG, "New best difficulty: %s", module->best_diff_string);
+
+    // v7 : alerte WhatsApp "nouveau record" (optionnelle, desactivee par defaut).
+    if (nvs_config_get_bool(NVS_CONFIG_WA_NOTIFY_RECORD)) {
+        char wa_msg[160];
+        snprintf(wa_msg, sizeof(wa_msg),
+                 "Nouveau record ! Ton Bitaxe a atteint une best difficulty de %s. Il ne lache rien !",
+                 module->best_diff_string);
+        notify_whatsapp_send(wa_msg);
+    }
 }
 
 static esp_err_t ensure_overheat_mode_config() {
