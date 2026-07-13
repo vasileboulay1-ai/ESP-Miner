@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "global_state.h"
@@ -56,6 +57,13 @@
 #define TUNE_SAVE_INTERVAL_CYCLES 18000 // 18000 x 100ms = ~30 min : throttle des ecritures NVS (usure flash)
 #define GOV_NVS_NAMESPACE   "governor"  // namespace NVS isole (n'interfere pas avec "main")
 #define GOV_NVS_KEY         "vtable"     // blob = [learned[25] , floor[25]] en uint16_t
+// ---- v6 : Gardien anti-abandon (chien de garde hashrate) ----
+#define GUARD_ENABLE        1           // 1 = surveille et relance un ASIC fige
+#define GUARD_MIN_HASHRATE  50.0f       // GH/s : en dessous (alors qu'on devrait miner) = fige
+#define GUARD_STALL_CYCLES  1800        // 1800 x 100ms = 180s de hashrate ~0 avant d'agir
+#define GUARD_GRACE_CYCLES  1200        // 1200 x 100ms = 120s de grace apres (re)demarrage (ramp)
+#define GUARD_VOLT_BUMP     20          // mV remontes a la recuperation (anti-lockup par sous-voltage)
+#define GUARD_MAX_SOFT      3           // apres 3 relances soft echouees -> redemarrage complet
 
 static const char * TAG = "power_management";
 
@@ -102,6 +110,25 @@ static uint16_t gov_seed_voltage(int b, uint16_t baseline_b, const uint16_t *lea
         }
     }
     return baseline_b;                                      // aucun voisin appris -> baseline sure
+}
+
+// v5/v6 : ecrit la table apprise (learned+floor) dans la NVS. Utilise par la sauvegarde
+// throttlee du tuner ET par le Gardien (sauvegarde immediate avant une relance/redemarrage).
+static void gov_save_vtable_nvs(const uint16_t *learned, const uint16_t *floor)
+{
+    uint16_t blob[TUNE_BUCKETS * 2];
+    for (int i = 0; i < TUNE_BUCKETS; i++) {
+        blob[i] = learned[i];
+        blob[TUNE_BUCKETS + i] = floor[i];
+    }
+    nvs_handle_t nh;
+    if (nvs_open(GOV_NVS_NAMESPACE, NVS_READWRITE, &nh) == ESP_OK) {
+        if (nvs_set_blob(nh, GOV_NVS_KEY, blob, sizeof(blob)) == ESP_OK) {
+            nvs_commit(nh);
+            ESP_LOGI(TAG, "[TUNER] table de tension sauvegardee en NVS");
+        }
+        nvs_close(nh);
+    }
 }
 
 static void mining_stop(GlobalState * GLOBAL_STATE)
@@ -216,6 +243,9 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     int last_bucket = -1;
     int tune_save_counter = 0;                        // v5 : compteur pour throttler les ecritures NVS
     bool tune_dirty = false;                          // v5 : table modifiee depuis la derniere sauvegarde ?
+    int stall_counter = 0;                            // v6 : cycles avec hashrate ~0 (alors qu'on devrait miner)
+    int stall_grace = GUARD_GRACE_CYCLES;             // v6 : grace apres (re)demarrage (le temps du ramp)
+    int stall_recoveries = 0;                         // v6 : relances soft consecutives
 
     // v5 : recharge la table de tension apprise depuis la NVS (persiste entre reboots).
     {
@@ -451,23 +481,63 @@ void POWER_MANAGEMENT_task(void * pvParameters)
 
         VCORE_check_fault(GLOBAL_STATE);
 
+#if GUARD_ENABLE
+        // ---- V6 : GARDIEN ANTI-ABANDON ----
+        // Detecte un ASIC fige (hashrate ~0 alors qu'on devrait miner) et le relance tout
+        // seul. Filet de securite SOUS la detection d'erreurs du tuner : un sous-voltage
+        // trop agressif peut figer la puce sans meme generer d'erreurs (hashrate a 0).
+        if (is_paused || sys_module->overheat_mode || !GLOBAL_STATE->ASIC_initalized
+                || GLOBAL_STATE->SELF_TEST_MODULE.is_active) {
+            // Pause volontaire / surchauffe / ASIC non initialise / self-test : on ne surveille pas.
+            stall_counter = 0;
+            stall_grace = GUARD_GRACE_CYCLES;
+        } else if (stall_grace > 0) {
+            stall_grace--;                 // laisse le hashrate monter apres un (re)demarrage
+            stall_counter = 0;
+        } else if (sys_module->current_hashrate < GUARD_MIN_HASHRATE) {
+            // Hashrate au plancher alors qu'on devrait miner -> on compte.
+            if (++stall_counter >= GUARD_STALL_CYCLES) {
+                stall_counter = 0;
+                stall_recoveries++;
+
+                // Anti-lockup par sous-voltage : on remonte la tension du palier courant
+                // et on verrouille ce niveau comme plancher (ne pas y redescendre).
+                int gb = gov_bucket(gov_effective_freq);
+                uint16_t gbase = (uint16_t) gov_voltage_for_freq(gov_effective_freq);
+                uint16_t bumped = gov_learned_mv[gb] + GUARD_VOLT_BUMP;
+                if (bumped > gbase + 30) bumped = gbase + 30;
+                if (bumped > 1250) bumped = 1250;
+                gov_learned_mv[gb] = bumped;
+                gov_floor_mv[gb] = bumped;  // verrouille AU niveau remonte : le tuner n'y redescendra pas
+                gov_save_vtable_nvs(gov_learned_mv, gov_floor_mv); // persiste AVANT toute relance
+                tune_dirty = false;
+
+                if (stall_recoveries > GUARD_MAX_SOFT) {
+                    ESP_LOGE(TAG, "[GARDIEN] ASIC toujours fige apres %d relances -> REDEMARRAGE COMPLET", GUARD_MAX_SOFT);
+                    vTaskDelay(500 / portTICK_PERIOD_MS);
+                    esp_restart();         // dernier recours (la table apprise est deja en NVS)
+                }
+
+                ESP_LOGW(TAG, "[GARDIEN] ASIC fige (hashrate ~0) depuis %ds -> relance #%d, tension %g MHz remontee a %u mV",
+                         GUARD_STALL_CYCLES / 10, stall_recoveries, gov_effective_freq, bumped);
+                mining_stop(GLOBAL_STATE);
+                mining_start(GLOBAL_STATE);
+                last_asic_frequency = 0;   // force le gouverneur a re-appliquer la frequence (ramp auto)
+                last_core_voltage = 0;     // force la re-application de la tension
+                stall_grace = GUARD_GRACE_CYCLES;
+            }
+        } else {
+            // Hashrate correct -> tout va bien, on remet les compteurs a zero.
+            stall_counter = 0;
+            stall_recoveries = 0;
+        }
+#endif
+
         // v5 : sauvegarde NVS throttlee (au plus 1 ecriture / ~30 min, et seulement si change).
         if (++tune_save_counter >= TUNE_SAVE_INTERVAL_CYCLES) {
             tune_save_counter = 0;
             if (tune_dirty) {
-                uint16_t blob[TUNE_BUCKETS * 2];
-                for (int i = 0; i < TUNE_BUCKETS; i++) {
-                    blob[i] = gov_learned_mv[i];
-                    blob[TUNE_BUCKETS + i] = gov_floor_mv[i];
-                }
-                nvs_handle_t nh;
-                if (nvs_open(GOV_NVS_NAMESPACE, NVS_READWRITE, &nh) == ESP_OK) {
-                    if (nvs_set_blob(nh, GOV_NVS_KEY, blob, sizeof(blob)) == ESP_OK) {
-                        nvs_commit(nh);
-                        ESP_LOGI(TAG, "[TUNER] table de tension sauvegardee en NVS");
-                    }
-                    nvs_close(nh);
-                }
+                gov_save_vtable_nvs(gov_learned_mv, gov_floor_mv);
                 tune_dirty = false;
             }
         }
