@@ -38,6 +38,9 @@
 #define GOV_FREQ_MIN        400.0f  // frequence plancher (MHz)
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
+// ---- v8 : maintien du 5V d'entree (cape la freq pour eviter l'affaissement de l'input voltage) ----
+#define GOV_VIN_ENABLE      1        // 1 = protege le 5V (cape la freq quand l'input s'affaisse)
+#define GOV_VIN_MIN         4970.0f  // mV : input sous ce seuil -> baisse la freq ET memorise ce plafond
 
 // ---- v4 : auto-tuner de tension (apprend la tension mini stable par frequence) ----
 // Perturbe-et-observe : on grignote la tension vers le bas ; si le taux d'erreur ASIC
@@ -235,6 +238,7 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     float gov_target_freq = power_management->frequency_value;
     float gov_effective_freq = power_management->frequency_value;
     int gov_counter = 0;
+    float gov_vin_ceiling = 100000.0f;  // v8 : plafond de freq impose par l'input voltage (aucun cap au depart)
 
     // v4 : tension APPRISE par palier de frequence (0 = pas encore appris -> table "propre").
     static uint16_t gov_learned_mv[TUNE_BUCKETS] = {0};
@@ -383,12 +387,19 @@ void POWER_MANAGEMENT_task(void * pvParameters)
             if (power_management->chip_temp2_avg > t) t = power_management->chip_temp2_avg;
             float p = power_management->power;
 
+            // v8 : l'input voltage s'affaisse quand on tire trop de courant (freq trop haute).
+            float vin = power_management->voltage;   // tension d'entree 5V (mV)
+            bool vin_low = false;
+#if GOV_VIN_ENABLE
+            vin_low = (vin > 1000.0f && vin < GOV_VIN_MIN);   // >1000 mV = lecture valide
+#endif
             if ((t >= GOV_TEMP_EMERGENCY || p >= GOV_POWER_EMERGENCY) && gov_effective_freq > GOV_FREQ_MIN) {
                 gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence temp OU puissance : baisse renforcee
-            } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH) && gov_effective_freq > GOV_FREQ_MIN) {
-                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud OU trop de watts : on baisse
-            } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && gov_effective_freq < gov_target_freq) {
-                gov_effective_freq += GOV_FREQ_STEP;            // frais ET marge de puissance : on remonte
+            } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH || vin_low) && gov_effective_freq > GOV_FREQ_MIN) {
+                if (vin_low) gov_vin_ceiling = gov_effective_freq - GOV_FREQ_STEP;  // memorise le plafond input
+                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud / trop de watts / input < 5V : on baisse
+            } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && gov_effective_freq < gov_target_freq && gov_effective_freq < gov_vin_ceiling) {
+                gov_effective_freq += GOV_FREQ_STEP;            // frais, marge de watts ET input OK : on remonte
             }
 
             if (gov_effective_freq < GOV_FREQ_MIN) gov_effective_freq = GOV_FREQ_MIN;
@@ -460,7 +471,7 @@ void POWER_MANAGEMENT_task(void * pvParameters)
 
         // Applique la frequence effective quand elle change.
         if (gov_effective_freq != last_asic_frequency) {
-            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC pow %.1fW -> ASIC %g MHz @ %umV (plafond %g MHz)", power_management->chip_temp_avg, power_management->power, gov_effective_freq, gov_voltage, gov_target_freq);
+            ESP_LOGI(TAG, "[GOVERNOR] temp %.1fC pow %.1fW vin %.2fV -> ASIC %g MHz @ %umV (plafond %g MHz)", power_management->chip_temp_avg, power_management->power, power_management->voltage / 1000.0, gov_effective_freq, gov_voltage, gov_target_freq);
 
             power_management->frequency_value = gov_effective_freq;
             power_management->expected_hashrate = expected_hashrate(GLOBAL_STATE);
