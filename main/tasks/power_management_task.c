@@ -39,7 +39,7 @@
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
 // ---- v8 : maintien du 5V d'entree (cape la freq pour eviter l'affaissement de l'input voltage) ----
-#define GOV_VIN_ENABLE      1        // 1 = protege le 5V (cape la freq quand l'input s'affaisse)
+#define GOV_VIN_ENABLE      0        // v8 abandonne : NE PAS caper la freq (perte de perf). On garde juste le log vin.
 #define GOV_VIN_MIN         4970.0f  // mV : input sous ce seuil -> baisse la freq ET memorise ce plafond
 
 // ---- v4 : auto-tuner de tension (apprend la tension mini stable par frequence) ----
