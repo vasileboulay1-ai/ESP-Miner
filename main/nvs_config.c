@@ -130,6 +130,9 @@ static Settings settings[NVS_CONFIG_COUNT] = {
     [NVS_CONFIG_WA_APIKEY]                             = {.nvs_key_name = "wa_apikey",       .type = TYPE_STR,   .default_value = {.str = ""},                                          .rest_name = "waApiKey",                           .min = 0,  .max = 32},
     [NVS_CONFIG_WA_NOTIFY_BLOCK]                       = {.nvs_key_name = "wa_block",        .type = TYPE_BOOL,  .default_value = {.b   = true},                                        .rest_name = "waNotifyBlock",                      .min = 0,  .max = 1},
     [NVS_CONFIG_WA_NOTIFY_RECORD]                      = {.nvs_key_name = "wa_record",       .type = TYPE_BOOL,  .default_value = {.b   = false},                                       .rest_name = "waNotifyRecord",                     .min = 0,  .max = 1},
+
+    // Perfection Edition : mode de l'auto-tuner. false = Efficacite (tension mini) ; true = Stabilite (tension max, erreurs mini)
+    [NVS_CONFIG_TUNER_STABILITY]                       = {.nvs_key_name = "tuner_stab",      .type = TYPE_BOOL,  .default_value = {.b   = false},                                       .rest_name = "tunerStability",                     .min = 0,  .max = 1},
 };
 
 Settings *nvs_config_get_settings(NvsConfigKey key)

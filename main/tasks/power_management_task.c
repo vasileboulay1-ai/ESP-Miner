@@ -55,6 +55,10 @@
 #define TUNE_VOLT_FLOOR     1000     // tension mini absolue, garde-fou dur (mV)
 #define TUNE_MAX_UNDERVOLT  70       // on ne descend jamais plus de 70 mV sous la table "propre" (mV)
 #define TUNE_SETTLE_CYCLES  300      // 300 x 100ms = ~30s de stabilisation avant chaque decision
+// Perfection Edition : parametres du MODE STABILITE (tension haute, erreurs mini). Actif si tunerStability=true.
+#define TUNE_STAB_ERR_GOOD  0.02f    // ne tente de baisser QUE si l'erreur est quasi nulle
+#define TUNE_STAB_ERR_BAD   0.10f    // remonte la tension a la moindre erreur (>=0,10%)
+#define TUNE_STAB_MAX_UV    -25      // undervolt negatif : plancher = baseline +25 mV (marge de securite haute)
 // ---- v5 : anti-oscillation + persistance ----
 #define TUNE_SEED_MAX_DIST  3        // amorce un nouveau palier depuis un voisin appris a <=3 paliers (75 MHz)
 #define TUNE_SAVE_INTERVAL_CYCLES 18000 // 18000 x 100ms = ~30 min : throttle des ecritures NVS (usure flash)
@@ -434,26 +438,33 @@ void POWER_MANAGEMENT_task(void * pvParameters)
                 float err = sys_module->error_percentage;
                 uint16_t v = gov_learned_mv[b];
 
-                // Bornes de descente : garde-fou dur, limite vs table "propre", plancher verrouille.
+                // Perfection Edition : mode de l'auto-tuner (Efficacite par defaut, ou Stabilite/erreurs mini).
+                bool tuner_stab   = nvs_config_get_bool(NVS_CONFIG_TUNER_STABILITY);
+                float tune_err_good = tuner_stab ? TUNE_STAB_ERR_GOOD : TUNE_ERR_GOOD;
+                float tune_err_bad  = tuner_stab ? TUNE_STAB_ERR_BAD  : TUNE_ERR_BAD;
+                int   tune_max_uv   = tuner_stab ? TUNE_STAB_MAX_UV   : TUNE_MAX_UNDERVOLT;  // Stab : negatif -> plancher au-dessus de baseline
+                int   tune_up_ceil  = tuner_stab ? 1250 : ((int)baseline + 30);             // Stab : peut remonter jusqu'au plafond dur
+
+                // Bornes de descente : garde-fou dur, limite vs table "propre" (selon le mode), plancher verrouille.
                 uint16_t min_allowed = TUNE_VOLT_FLOOR;
-                uint16_t soft_min = (baseline > TUNE_MAX_UNDERVOLT) ? baseline - TUNE_MAX_UNDERVOLT : TUNE_VOLT_FLOOR;
+                uint16_t soft_min = ((int)baseline > tune_max_uv) ? (uint16_t)((int)baseline - tune_max_uv) : TUNE_VOLT_FLOOR;
                 if (soft_min > min_allowed) min_allowed = soft_min;
                 if (gov_floor_mv[b] > 0 && gov_floor_mv[b] + TUNE_MARGIN > min_allowed) min_allowed = gov_floor_mv[b] + TUNE_MARGIN;
 
-                if (err >= TUNE_ERR_BAD) {
-                    // Instable : on verrouille ce niveau comme plancher et on remonte franchement.
+                if (err >= tune_err_bad) {
+                    // Erreur/instabilite : on verrouille ce niveau comme plancher et on remonte la tension.
                     gov_floor_mv[b] = v;
-                    uint16_t up = v + TUNE_STEP_UP;
-                    if (up > baseline + 30) up = baseline + 30;   // plafond raisonnable
+                    int up = (int)v + TUNE_STEP_UP;
+                    if (up > tune_up_ceil) up = tune_up_ceil;
                     if (up > 1250) up = 1250;
-                    gov_learned_mv[b] = up;
-                    ESP_LOGW(TAG, "[TUNER] %g MHz : erreurs %.2f%% -> remonte %u -> %u mV (plancher verrouille a %u)", gov_effective_freq, err, v, up, v);
+                    gov_learned_mv[b] = (uint16_t)up;
+                    ESP_LOGW(TAG, "[TUNER%s] %g MHz : erreurs %.2f%% -> remonte %u -> %u mV (plancher %u)", tuner_stab ? "-STAB" : "", gov_effective_freq, err, v, (uint16_t)up, v);
                     tune_settle = TUNE_SETTLE_CYCLES;
                     tune_dirty = true;
-                } else if (err <= TUNE_ERR_GOOD && (int)v - TUNE_STEP_DOWN >= (int)min_allowed) {
+                } else if (err <= tune_err_good && (int)v - TUNE_STEP_DOWN >= (int)min_allowed) {
                     // Sain et marge disponible : on tente de baisser d'un cran.
                     gov_learned_mv[b] = v - TUNE_STEP_DOWN;
-                    ESP_LOGI(TAG, "[TUNER] %g MHz : erreurs %.2f%% OK -> essai %u -> %u mV", gov_effective_freq, err, v, (uint16_t)(v - TUNE_STEP_DOWN));
+                    ESP_LOGI(TAG, "[TUNER%s] %g MHz : erreurs %.2f%% OK -> essai %u -> %u mV", tuner_stab ? "-STAB" : "", gov_effective_freq, err, v, (uint16_t)(v - TUNE_STEP_DOWN));
                     tune_settle = TUNE_SETTLE_CYCLES;
                     tune_dirty = true;
                 }

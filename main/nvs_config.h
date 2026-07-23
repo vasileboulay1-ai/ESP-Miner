@@ -89,6 +89,9 @@ typedef enum {
     NVS_CONFIG_WA_NOTIFY_BLOCK,
     NVS_CONFIG_WA_NOTIFY_RECORD,
 
+    // Perfection Edition : mode de l'auto-tuner (false = Efficacite, true = Stabilite / erreurs mini)
+    NVS_CONFIG_TUNER_STABILITY,
+
     NVS_CONFIG_COUNT
 } NvsConfigKey;
 
