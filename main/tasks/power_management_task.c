@@ -41,6 +41,14 @@
 // ---- v8 : maintien du 5V d'entree (cape la freq pour eviter l'affaissement de l'input voltage) ----
 #define GOV_VIN_ENABLE      0        // v8 abandonne : NE PAS caper la freq (perte de perf). On garde juste le log vin.
 #define GOV_VIN_MIN         4970.0f  // mV : input sous ce seuil -> baisse la freq ET memorise ce plafond
+// ---- Securite temperature du REGULATEUR DE TENSION (VRM) : anti-surchauffe / anti-incendie ----
+#define GOV_VR_ENABLE       1
+#define GOV_VR_THROTTLE     68.0f    // >= : on baisse la frequence (moins de courant dans le VRM)
+#define GOV_VR_EMERGENCY    71.0f    // >= : baisse renforcee
+#define GOV_VR_CUTOFF       73.0f    // >= et PERSISTANT -> on COUPE le minage
+#define GOV_VR_HARD         78.0f    // >= : coupure immediate (garde-fou dur)
+#define GOV_VR_PERSIST_CYCLES 300    // 300 x 100ms = 30s au-dessus de CUTOFF -> coupe
+#define GOV_VR_RESUME       55.0f    // <= : VRM refroidi (proche ambiant) -> reprise auto du minage
 
 // ---- v4 : auto-tuner de tension (apprend la tension mini stable par frequence) ----
 // Perturbe-et-observe : on grignote la tension vers le bas ; si le taux d'erreur ASIC
@@ -254,6 +262,8 @@ void POWER_MANAGEMENT_task(void * pvParameters)
     int stall_counter = 0;                            // v6 : cycles avec hashrate ~0 (alors qu'on devrait miner)
     int stall_grace = GUARD_GRACE_CYCLES;             // v6 : grace apres (re)demarrage (le temps du ramp)
     int stall_recoveries = 0;                         // v6 : relances soft consecutives
+    bool vr_shutdown = false;                         // securite VRM : minage coupe pour surchauffe regulateur
+    int vr_hot_counter = 0;                           // cycles consecutifs au-dessus du seuil de coupure VRM
 
     // v5 : recharge la table de tension apprise depuis la NVS (persiste entre reboots).
     {
@@ -287,14 +297,39 @@ void POWER_MANAGEMENT_task(void * pvParameters)
         power_management->chip_temp2_avg = Thermal_get_chip_temp2(GLOBAL_STATE);
 
         power_management->vr_temp = Power_get_vreg_temp(GLOBAL_STATE);
-        // User pause, hardware fault, or all pools unreachable
-        bool wants_stop = sys_module->mining_paused || sys_module->hardware_fault || sys_module->pools_unavailable;
+
+#if GOV_VR_ENABLE
+        // ---- SECURITE VRM (anti-surchauffe du regulateur de tension) ----
+        // Un VRM chaud = le vrai risque physique. Le throttle (baisse de frequence) est gere dans le
+        // gouverneur ; ici on gere la COUPURE si ca persiste trop chaud, et la REPRISE une fois refroidi.
+        float vrt = power_management->vr_temp;
+        if (!vr_shutdown) {
+            if (vrt >= GOV_VR_CUTOFF) vr_hot_counter++; else vr_hot_counter = 0;
+            if (vrt >= GOV_VR_HARD || vr_hot_counter >= GOV_VR_PERSIST_CYCLES) {
+                ESP_LOGE(TAG, "[SECU-VRM] Regulateur %.1fC trop chaud (persistant) -> COUPURE du minage (securite)", vrt);
+                vr_shutdown = true;
+                vr_hot_counter = 0;
+            }
+        } else {
+            // Minage coupe : on attend le refroidissement proche de l'ambiant pour relancer tout seul.
+            if (vrt > 0.0f && vrt <= GOV_VR_RESUME) {
+                ESP_LOGW(TAG, "[SECU-VRM] Regulateur refroidi a %.1fC (<= %.0f) -> reprise auto du minage", vrt, GOV_VR_RESUME);
+                vr_shutdown = false;
+            }
+        }
+#endif
+
+        // User pause, hardware fault, all pools unreachable, ou surchauffe VRM
+        bool wants_stop = sys_module->mining_paused || sys_module->hardware_fault || sys_module->pools_unavailable || vr_shutdown;
         if (wants_stop && !is_paused) {
             mining_stop(GLOBAL_STATE);
             is_paused = true;
         } else if (!wants_stop && is_paused) {
             mining_start(GLOBAL_STATE);
             is_paused = false;
+            last_asic_frequency = 0;   // reprise -> force la re-application de la frequence (ramp auto)
+            last_core_voltage = 0;     // et de la tension
+            stall_grace = GUARD_GRACE_CYCLES;  // grace apres reprise (le temps du ramp)
         }
 
         // If we've paused or have a hardware fault, skip doing anything else
@@ -397,13 +432,20 @@ void POWER_MANAGEMENT_task(void * pvParameters)
 #if GOV_VIN_ENABLE
             vin_low = (vin > 1000.0f && vin < GOV_VIN_MIN);   // >1000 mV = lecture valide
 #endif
-            if ((t >= GOV_TEMP_EMERGENCY || p >= GOV_POWER_EMERGENCY) && gov_effective_freq > GOV_FREQ_MIN) {
-                gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence temp OU puissance : baisse renforcee
-            } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH || vin_low) && gov_effective_freq > GOV_FREQ_MIN) {
+            // Securite VRM : la temperature du regulateur devient une condition de throttle.
+            float vrt2 = power_management->vr_temp;
+            bool vr_hot = false, vr_vhot = false;
+#if GOV_VR_ENABLE
+            vr_hot  = (vrt2 >= GOV_VR_THROTTLE);    // >= 68 C : on baisse la freq (moins de courant VRM)
+            vr_vhot = (vrt2 >= GOV_VR_EMERGENCY);   // >= 71 C : baisse renforcee
+#endif
+            if ((t >= GOV_TEMP_EMERGENCY || p >= GOV_POWER_EMERGENCY || vr_vhot) && gov_effective_freq > GOV_FREQ_MIN) {
+                gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence temp / puissance / VRM tres chaud
+            } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH || vin_low || vr_hot) && gov_effective_freq > GOV_FREQ_MIN) {
                 if (vin_low) gov_vin_ceiling = gov_effective_freq - GOV_FREQ_STEP;  // memorise le plafond input
-                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud / trop de watts / input < 5V : on baisse
-            } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && gov_effective_freq < gov_target_freq && gov_effective_freq < gov_vin_ceiling) {
-                gov_effective_freq += GOV_FREQ_STEP;            // frais, marge de watts ET input OK : on remonte
+                gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud / trop de watts / input < 5V / VRM chaud : on baisse
+            } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && !vr_hot && gov_effective_freq < gov_target_freq && gov_effective_freq < gov_vin_ceiling) {
+                gov_effective_freq += GOV_FREQ_STEP;            // frais, marge de watts, input OK ET VRM frais : on remonte
             }
 
             if (gov_effective_freq < GOV_FREQ_MIN) gov_effective_freq = GOV_FREQ_MIN;
