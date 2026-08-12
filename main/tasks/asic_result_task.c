@@ -17,25 +17,26 @@
 
 static const char *TAG = "asic_result";
 
-#define DEDUP_SIZE 64
-// Anti-doublon local : memorise les 64 dernieres shares SOUMISES (job, nonce, version).
-// Retourne true si cette share a deja ete envoyee recemment (=> a filtrer, ne pas renvoyer au pool)
-// et false sinon (share unique, memorisee). Une eventuelle share-bloc passe TOUJOURS a sa premiere
-// occurrence (jamais perdue) ; seules les re-emissions strictement identiques sont bloquees.
-static bool share_is_duplicate(uint8_t job, uint32_t nonce, uint32_t version)
+#define DEDUP_SIZE 256
+// Anti-doublon local : memorise les 256 dernieres shares SOUMISES, par (nonce, version).
+// IMPORTANT : la cle n'inclut PAS le numero de job local. Les doublons viennent du MEME travail
+// re-genere sous un autre index (le pool renvoie un notify identique -> extranonce_2 remis a 0 ->
+// l'ASIC re-cherche le meme travail et re-trouve les memes nonces). En ne gardant que (nonce,version),
+// on les attrape quel que soit l'index local. Collision fortuite entre 2 shares differentes ~ 2^-48
+// (negligeable) ; une eventuelle share-bloc passe toujours a sa 1ere occurrence.
+static bool share_is_duplicate(uint32_t nonce, uint32_t version)
 {
-    static uint8_t  d_job[DEDUP_SIZE];
     static uint32_t d_nonce[DEDUP_SIZE];
     static uint32_t d_ver[DEDUP_SIZE];
     static bool     d_set[DEDUP_SIZE];
     static int      d_idx = 0;
 
     for (int i = 0; i < DEDUP_SIZE; i++) {
-        if (d_set[i] && d_nonce[i] == nonce && d_ver[i] == version && d_job[i] == job) {
+        if (d_set[i] && d_nonce[i] == nonce && d_ver[i] == version) {
             return true;   // deja soumise -> doublon a filtrer
         }
     }
-    d_job[d_idx] = job; d_nonce[d_idx] = nonce; d_ver[d_idx] = version; d_set[d_idx] = true;
+    d_nonce[d_idx] = nonce; d_ver[d_idx] = version; d_set[d_idx] = true;
     d_idx = (d_idx + 1) % DEDUP_SIZE;
     return false;
 }
@@ -86,10 +87,11 @@ void ASIC_result_task(void *pvParameters)
 
         uint32_t version_bits = asic_result->rolled_version ^ active_job->version;
         // Anti-doublon : on ne (re)soumet pas une share deja envoyee -> supprime les "duplicate share".
-        // Le test n'est evalue que pour les shares reellement soumises (>= pool_diff), grace au court-circuit.
-        if (nonce_diff >= active_job->pool_diff && !share_is_duplicate(job_id, asic_result->nonce, version_bits))
+        if (nonce_diff >= active_job->pool_diff)
         {
-            if (GLOBAL_STATE->stratum_protocol == STRATUM_PROTOCOL_V2) {
+            if (share_is_duplicate(asic_result->nonce, version_bits)) {
+                ESP_LOGW(TAG, "[ANTI-DOUBLON] doublon filtre (nonce %08" PRIX32 ") - non renvoye au pool", asic_result->nonce);
+            } else if (GLOBAL_STATE->stratum_protocol == STRATUM_PROTOCOL_V2) {
                 // SV2: submit with binary protocol
                 int ret;
                 uint32_t sv2_job_id = (uint32_t)strtoul(active_job->jobid, NULL, 10);
