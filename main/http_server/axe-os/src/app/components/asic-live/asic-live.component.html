@@ -1,0 +1,31 @@
+<div class="card mb-0 asic-live">
+    <div class="asic-live__head">
+        <span class="asic-live__title">
+            <i class="pi pi-bolt"></i>
+            Calculs ASIC en direct
+        </span>
+        <span class="asic-live__live">
+            <span class="asic-live__dot"></span>
+            en direct
+        </span>
+    </div>
+
+    <div class="asic-live__cols">
+        <span>Cœur</span>
+        <span>Nonce trouvé</span>
+        <span class="asic-live__r">Difficulté</span>
+    </div>
+
+    <div class="asic-live__feed">
+        <div class="asic-live__row" *ngFor="let r of results">
+            <span class="asic-live__core">{{ r.core }}</span>
+            <span class="asic-live__nonce">{{ r.nonce }}</span>
+            <span class="asic-live__diff">{{ r.diff }}</span>
+        </div>
+        <div class="asic-live__empty" *ngIf="results.length === 0">
+            En attente des premières solutions…
+        </div>
+    </div>
+
+    <div class="asic-live__foot">Chaque ligne = une solution que ta puce vient de calculer.</div>
+</div>

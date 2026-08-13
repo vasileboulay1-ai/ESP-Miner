@@ -1,0 +1,98 @@
+.asic-live {
+    &__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+    }
+
+    &__title {
+        font-size: 1.125rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    &__live {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #22c55e;
+    }
+
+    &__dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: asicPulse 1.4s ease infinite;
+    }
+
+    &__cols {
+        display: grid;
+        grid-template-columns: 96px 1fr auto;
+        gap: 0.75rem;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.55;
+        padding: 0 0.25rem 0.25rem;
+    }
+
+    &__feed {
+        font-family: monospace;
+        font-size: 0.85rem;
+        min-height: 236px;
+    }
+
+    &__row {
+        display: grid;
+        grid-template-columns: 96px 1fr auto;
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.45rem 0.25rem;
+        border-top: 1px solid var(--surface-border, rgba(128, 128, 128, 0.2));
+        animation: asicRowIn 0.35s ease;
+    }
+
+    &__core {
+        opacity: 0.7;
+    }
+
+    &__nonce {
+        letter-spacing: 0.03em;
+    }
+
+    &__diff {
+        text-align: right;
+        color: var(--primary-color, #3b82f6);
+    }
+
+    &__r {
+        text-align: right;
+    }
+
+    &__empty {
+        padding: 1.75rem 0.25rem;
+        opacity: 0.5;
+        font-size: 0.85rem;
+    }
+
+    &__foot {
+        margin-top: 0.6rem;
+        font-size: 0.7rem;
+        opacity: 0.5;
+    }
+}
+
+@keyframes asicPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+@keyframes asicRowIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}

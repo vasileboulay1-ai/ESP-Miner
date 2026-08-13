@@ -22,6 +22,7 @@ import { TooltipTextIconComponent } from './components/tooltip-text-icon/tooltip
 import { ConfettiComponent } from './components/confetti/confetti.component';
 import { SnowflakesComponent } from './components/snowflakes/snowflakes.component';
 import { LogsComponent } from './components/logs/logs.component';
+import { AsicLiveComponent } from './components/asic-live/asic-live.component';
 import { SystemComponent } from './components/system/system.component';
 import { UpdateComponent } from './components/update/update.component';
 import { NetworkComponent } from './components/network/network.component';
@@ -57,6 +58,7 @@ const components = [
   NetworkComponent,
   SettingsComponent,
   LogsComponent,
+  AsicLiveComponent,
   SystemComponent,
   UpdateComponent,
   PoolComponent
