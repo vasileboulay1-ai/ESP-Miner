@@ -16,6 +16,7 @@
 #include "stratum_api.h"
 #include "stratum_v2_task.h"
 #include "utils.h"
+#include "asic_perf_monitor.h"
 
 static const char *TAG = "create_jobs_task";
 
@@ -173,6 +174,7 @@ void create_jobs_task(void *pvParameters)
         }
 
         // Generate and send job
+        asic_perf_build_start();   // instrumentation : debut preparation job
         if (active_protocol == STRATUM_PROTOCOL_V2) {
             if (stratum_v2_is_extended_channel(GLOBAL_STATE)) {
                 generate_work_sv2_ext(GLOBAL_STATE, (sv2_ext_job_t *)current_work, difficulty, extranonce_2);
@@ -184,6 +186,7 @@ void create_jobs_task(void *pvParameters)
             generate_work(GLOBAL_STATE, (mining_notify *)current_work, extranonce_2, difficulty);
             extranonce_2++;
         }
+        asic_perf_work_sent();     // instrumentation : job envoye a l'ASIC (T4)
         timeout_ms = ASIC_get_asic_job_frequency_ms(GLOBAL_STATE);
     }
 }

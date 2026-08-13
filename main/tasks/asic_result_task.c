@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "scoreboard.h"
 #include "self_test.h"
+#include "asic_perf_monitor.h"
 
 static const char *TAG = "asic_result";
 
@@ -90,6 +91,7 @@ void ASIC_result_task(void *pvParameters)
         if (nonce_diff >= active_job->pool_diff)
         {
             if (share_is_duplicate(asic_result->nonce, version_bits)) {
+                asic_perf_dup_filtered();   // instrumentation : proxy de travail re-balaye
                 ESP_LOGW(TAG, "[ANTI-DOUBLON] doublon filtre (nonce %08" PRIX32 ") - non renvoye au pool", asic_result->nonce);
             } else if (GLOBAL_STATE->stratum_protocol == STRATUM_PROTOCOL_V2) {
                 // SV2: submit with binary protocol

@@ -13,6 +13,7 @@
 #include "cjson_utils.h"
 #include "statistics_task.h"
 #include "stratum_v2_task.h"
+#include "asic_perf_monitor.h"
 
 
 static const char *get_reset_reason_str(esp_reset_reason_t reason)
@@ -69,6 +70,20 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
     cJSON_AddFloatToObject(root, "responseTime", g->SYSTEM_MODULE.response_time);
     cJSON_AddNumberToObject(root, "responseShareBatch", g->SYSTEM_MODULE.response_share_batch);
     cJSON_AddFloatToObject(root, "processTime", g->SYSTEM_MODULE.process_time);
+
+    // Instrumentation performance (asic_perf_monitor) - Phase 1 mesure
+    cJSON_AddFloatToObject(root, "newBlockReactionMs", asic_perf_stats.newblock_react_ms);
+    cJSON_AddFloatToObject(root, "newBlockReactionMaxMs", asic_perf_stats.newblock_react_max_ms);
+    cJSON_AddNumberToObject(root, "newBlockCount", asic_perf_stats.newblock_count);
+    cJSON_AddFloatToObject(root, "jobBuildMs", asic_perf_stats.job_build_ms);
+    cJSON_AddFloatToObject(root, "jobBuildMaxMs", asic_perf_stats.job_build_max_ms);
+    cJSON_AddNumberToObject(root, "jobsSent", asic_perf_stats.jobs_sent);
+    cJSON_AddNumberToObject(root, "dupFiltered", asic_perf_stats.dup_filtered);
+    {
+        double produced = (double) g->SYSTEM_MODULE.shares_accepted + (double) g->SYSTEM_MODULE.shares_rejected + (double) asic_perf_stats.dup_filtered;
+        double useful = (produced > 0.0) ? ((double) g->SYSTEM_MODULE.shares_accepted / produced) * 100.0 : 100.0;
+        cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) useful);
+    }
 
     // Dynamic Block Info
     cJSON_AddNumberToObject(root, "blockFound", g->SYSTEM_MODULE.block_found);
