@@ -15,6 +15,7 @@ export class CoreMapComponent implements OnInit, OnDestroy {
   public counts: number[] = new Array(CoreMapComponent.N).fill(0);
   public bg: string[] = new Array(CoreMapComponent.N).fill('rgba(100,116,139,0.12)');
   public total = 0;
+  public activeCount = 0;
 
   private heat: number[] = new Array(CoreMapComponent.N).fill(0);
   private sub?: Subscription;
@@ -59,6 +60,9 @@ export class CoreMapComponent implements OnInit, OnDestroy {
     const c = parseInt(m[1], 10);
     if (isNaN(c) || c < 0 || c >= CoreMapComponent.N) {
       return;
+    }
+    if (this.counts[c] === 0) {
+      this.activeCount++;   // premier hit de ce coeur -> il "existe" reellement
     }
     this.counts[c]++;
     this.heat[c] = 1;

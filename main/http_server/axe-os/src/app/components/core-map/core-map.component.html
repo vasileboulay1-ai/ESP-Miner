@@ -6,16 +6,17 @@
         </span>
         <span class="core-map__live">
             <span class="core-map__dot"></span>
-            128 cœurs · {{ total }} solutions
+            {{ activeCount }} cœurs actifs · {{ total }} solutions
         </span>
     </div>
 
     <div class="core-map__grid">
         <div class="core-map__cell"
              *ngFor="let c of cells; trackBy: trackIdx"
+             [class.core-map__cell--idle]="counts[c] === 0"
              [style.background]="bg[c]"
              [title]="'Cœur ' + c + ' : ' + counts[c] + ' solutions'">
-            {{ counts[c] }}
+            {{ counts[c] || '' }}
         </div>
     </div>
 

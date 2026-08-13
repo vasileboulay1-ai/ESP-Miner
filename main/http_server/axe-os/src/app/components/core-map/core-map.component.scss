@@ -45,7 +45,11 @@
         font-family: monospace;
         font-size: 11px;
         opacity: 0.85;
-        transition: background 0.18s ease;
+        transition: background 0.18s ease, opacity 0.3s ease;
+    }
+
+    &__cell--idle {
+        opacity: 0.16;
     }
 
     &__legend {
