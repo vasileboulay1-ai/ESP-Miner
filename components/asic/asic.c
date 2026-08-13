@@ -146,6 +146,12 @@ void ASIC_set_nonce_space(GlobalState * GLOBAL_STATE)
     ESP_LOGE(TAG, "Unknown ASIC id %d — cannot set nonce space", GLOBAL_STATE->DEVICE_CONFIG.family.asic.id);
 }
 
+// Optimisation feed (P1, conservatrice). 1 = active, 0 = comportement AxeOS standard (rollback).
+// A haute frequence l'ASIC epuise son espace de nonce (HCN) plus vite que le feed fixe de 500 ms
+// -> il re-balaie (doublons). On alimente un peu plus souvent pour reduire ce re-balayage.
+// NE touche AUCUNE securite : c'est uniquement la cadence d'envoi du travail.
+#define ASIC_FEED_OPT_ENABLE 1
+
 double ASIC_get_asic_job_frequency_ms(GlobalState * GLOBAL_STATE)
 {
     float freq = GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value;
@@ -160,8 +166,26 @@ double ASIC_get_asic_job_frequency_ms(GlobalState * GLOBAL_STATE)
             return calculate_bm_timeout_ms(freq, asic_count, small_cores, cores, 4, 1.0, asic_default_timeout_divided);
         case BM1366:
         case BM1368:
-        case BM1370:
             return asic_default_timeout_divided;
+        case BM1370:
+#if ASIC_FEED_OPT_ENABLE
+        {
+            // Scaling CONSERVATEUR : on ne comble que la MOITIE de l'ecart vers le scaling complet
+            // de frequence (facteur 0.5 -> vise ~+1% et non le max), avec un plancher de securite
+            // a 350 ms pour ne jamais sur-alimenter.
+            float base = (float) asic_default_timeout_divided;                                  // 500 ms
+            float ref  = (float) GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_frequency_mhz;  // 525 MHz
+            if (freq > ref && ref > 0.0f) {
+                float full = base * ref / freq;                 // scaling complet (agressif)
+                float conservative = base - (base - full) * 0.5f;
+                if (conservative < 350.0f) conservative = 350.0f;
+                return conservative;
+            }
+            return base;
+        }
+#else
+            return asic_default_timeout_divided;
+#endif
     }
     ESP_LOGE(TAG, "Unknown ASIC id %d — cannot compute job frequency", GLOBAL_STATE->DEVICE_CONFIG.family.asic.id);
     return 500;
