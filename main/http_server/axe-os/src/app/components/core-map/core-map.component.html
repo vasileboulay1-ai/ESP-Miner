@@ -1,0 +1,28 @@
+<div class="card mb-0 core-map">
+    <div class="core-map__head">
+        <span class="core-map__title">
+            <i class="pi pi-th-large"></i>
+            Carte des cœurs ASIC
+        </span>
+        <span class="core-map__live">
+            <span class="core-map__dot"></span>
+            128 cœurs · {{ total }} solutions
+        </span>
+    </div>
+
+    <div class="core-map__grid">
+        <div class="core-map__cell"
+             *ngFor="let c of cells; trackBy: trackIdx"
+             [style.background]="bg[c]"
+             [title]="'Cœur ' + c + ' : ' + counts[c] + ' solutions'">
+            {{ counts[c] }}
+        </div>
+    </div>
+
+    <div class="core-map__legend">
+        <span>Froid</span>
+        <span class="core-map__bar"></span>
+        <span>Vient de calculer</span>
+    </div>
+    <div class="core-map__foot">Chaque case = un cœur ; le chiffre = le nombre de solutions trouvées.</div>
+</div>
