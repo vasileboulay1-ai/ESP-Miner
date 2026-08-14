@@ -16,6 +16,8 @@ export class CoreMapComponent implements OnInit, OnDestroy {
   public bg: string[] = new Array(CoreMapComponent.N).fill('rgb(22,32,46)');
   public fg: string[] = new Array(CoreMapComponent.N).fill('rgba(231,238,245,0.55)');
   public glow: string[] = new Array(CoreMapComponent.N).fill('none');
+  // Déphasage de la "respiration" par cœur -> champ vivant, pas un clignotement synchronisé.
+  public delays: string[] = Array.from({ length: CoreMapComponent.N }, (_, i) => '-' + ((i * 0.371) % 2.4).toFixed(2) + 's');
   public total = 0;
   public activeCount = 0;
   public maxCount = 0;
@@ -95,7 +97,7 @@ export class CoreMapComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Halo bref quand un coeur vient de calculer, par-dessus la base.
+  // Éclair bref quand un coeur vient de TROUVER une solution, par-dessus la base.
   private decay(): void {
     for (let i = 0; i < CoreMapComponent.N; i++) {
       if (this.flash[i] > 0.02) {

@@ -33,6 +33,11 @@
         b {
             font-weight: 600;
         }
+
+        &--live {
+            border-color: rgba(34, 197, 94, 0.5);
+            color: #22c55e;
+        }
     }
 
     &__live {
@@ -67,10 +72,11 @@
         font-size: 11px;
         font-weight: 600;
         transition: background 0.25s ease, box-shadow 0.18s ease, opacity 0.3s ease;
+        animation: coreMapBreathe 2.4s ease-in-out infinite;
     }
 
     &__cell--idle {
-        opacity: 0.18;
+        opacity: 0.5;
     }
 
     &__cell--hot {
@@ -104,4 +110,15 @@
 @keyframes coreMapPulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.25; }
+}
+
+@keyframes coreMapBreathe {
+    0%, 100% { filter: brightness(0.85); }
+    50% { filter: brightness(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .core-map__cell {
+        animation: none;
+    }
 }

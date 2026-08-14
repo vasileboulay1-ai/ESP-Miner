@@ -5,10 +5,11 @@
             Carte des cœurs ASIC
         </span>
         <span class="core-map__meta">
+            <span class="core-map__stat core-map__stat--live">128 cœurs en hachage continu</span>
             <span class="core-map__stat" *ngIf="hotCore >= 0">cœur chaud <b>#{{ hotCore }}</b></span>
             <span class="core-map__live">
                 <span class="core-map__dot"></span>
-                {{ activeCount }} cœurs · {{ total }} solutions
+                {{ total }} solutions
             </span>
         </span>
     </div>
@@ -21,6 +22,7 @@
              [style.background]="bg[c]"
              [style.color]="fg[c]"
              [style.box-shadow]="glow[c]"
+             [style.animation-delay]="delays[c]"
              [title]="'Cœur ' + c + ' : ' + counts[c] + ' solutions'">
             {{ counts[c] || '' }}
         </div>
@@ -31,5 +33,5 @@
         <span class="core-map__bar"></span>
         <span>beaucoup de solutions</span>
     </div>
-    <div class="core-map__foot">La teinte = nombre cumulé de solutions par cœur ; le plus actif est encadré.</div>
+    <div class="core-map__foot">Chaque case respire = le cœur hache en continu · un éclair = une solution trouvée · la teinte = nombre cumulé.</div>
 </div>
