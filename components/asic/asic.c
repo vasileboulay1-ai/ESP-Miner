@@ -170,16 +170,16 @@ double ASIC_get_asic_job_frequency_ms(GlobalState * GLOBAL_STATE)
         case BM1370:
 #if ASIC_FEED_OPT_ENABLE
         {
-            // Scaling CONSERVATEUR : on ne comble que la MOITIE de l'ecart vers le scaling complet
-            // de frequence (facteur 0.5 -> vise ~+1% et non le max), avec un plancher de securite
-            // a 350 ms pour ne jamais sur-alimenter.
+            // P0 : feed au scaling COMPLET de la frequence. Le defaut 500 ms est cale sur 525 MHz ;
+            // a 900 MHz l'ASIC epuise son espace de nonce ~1,7x plus vite -> on alimente au prorata
+            // (500 * 525/900 ~= 292 ms). Ce n'est PAS de la sur-alimentation : c'est la cadence
+            // proportionnellement correcte pour la frequence courante. Plancher dur 250 ms.
             float base = (float) asic_default_timeout_divided;                                  // 500 ms
             float ref  = (float) GLOBAL_STATE->DEVICE_CONFIG.family.asic.default_frequency_mhz;  // 525 MHz
             if (freq > ref && ref > 0.0f) {
-                float full = base * ref / freq;                 // scaling complet (agressif)
-                float conservative = base - (base - full) * 0.5f;
-                if (conservative < 350.0f) conservative = 350.0f;
-                return conservative;
+                float scaled = base * ref / freq;               // cadence proportionnelle a la frequence
+                if (scaled < 250.0f) scaled = 250.0f;           // plancher de securite (jamais sous 250 ms)
+                return scaled;
             }
             return base;
         }
