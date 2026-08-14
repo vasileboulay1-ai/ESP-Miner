@@ -1,0 +1,64 @@
+<div class="card mb-0 pool-link">
+    <div class="pool-link__head">
+        <span class="pool-link__title">
+            <i class="pi pi-sync"></i>
+            Liaison au pool
+        </span>
+        <span class="pool-link__meta">
+            <span class="pool-link__status"
+                  [class.pool-link__status--off]="!connected"
+                  [class.pool-link__status--fb]="connected && fallback">
+                <span class="pool-link__sdot"></span>
+                {{ connected ? (fallback ? 'connecté · fallback' : 'connecté · principal') : 'déconnecté' }}
+            </span>
+            <span class="pool-link__lat">latence <b>{{ latency }}</b></span>
+        </span>
+    </div>
+
+    <div class="pool-link__link">
+        <div class="pool-link__node">
+            <div class="pool-link__nlabel">Ton mineur</div>
+            <div class="pool-link__nname"><span class="pool-link__ico pool-link__ico--miner"></span>Bitaxe</div>
+            <div class="pool-link__nsub"><b>{{ hashrate }}</b> · BM1370</div>
+        </div>
+
+        <div class="pool-link__cable" #cable>
+            <span class="pool-link__updir pool-link__updir--top">shares ▶</span>
+            <span class="pool-link__updir pool-link__updir--bot">◀ jobs · réponses</span>
+            <div class="pool-link__wire"></div>
+            <span class="pool-link__wcap pool-link__wcap--l"></span>
+            <span class="pool-link__wcap pool-link__wcap--r"></span>
+            <span class="pool-link__latbadge">⇄ {{ latency }}</span>
+        </div>
+
+        <div class="pool-link__node">
+            <div class="pool-link__nlabel">Pool</div>
+            <div class="pool-link__nname"><span class="pool-link__ico pool-link__ico--pool"></span>{{ poolUrl }}</div>
+            <div class="pool-link__nsub">:{{ poolPort }} · diff <b>{{ poolDiff }}</b><br>worker <b>{{ worker }}</b></div>
+        </div>
+    </div>
+
+    <div class="pool-link__legend">
+        <span><span class="pool-link__sw" style="background:#35d0c0"></span>share ▶</span>
+        <span><span class="pool-link__sw" style="background:#41d68a"></span>◀ acceptée</span>
+        <span><span class="pool-link__sw" style="background:#f2735f"></span>◀ refusée</span>
+        <span><span class="pool-link__sw" style="background:#9b8bff"></span>◀ nouveau job</span>
+    </div>
+
+    <div class="pool-link__stats">
+        <div class="pool-link__stat"><div class="k">Acceptées</div><div class="v pool-link__ok">{{ accepted }}</div></div>
+        <div class="pool-link__stat"><div class="k">Refusées</div><div class="v pool-link__bad">{{ rejected }}</div></div>
+        <div class="pool-link__stat"><div class="k">Jobs reçus</div><div class="v">{{ jobs }}</div></div>
+        <div class="pool-link__stat"><div class="k">Meilleure session</div><div class="v pool-link__gold">{{ bestSession }}</div></div>
+    </div>
+
+    <div class="pool-link__feedhead">Échanges en direct</div>
+    <div class="pool-link__feed">
+        <div class="pool-link__frow" *ngFor="let e of feed">
+            <span class="pool-link__ft">{{ e.time }}</span>
+            <span class="pool-link__fa" [style.color]="e.color">{{ e.up ? '▲' : '▼' }}</span>
+            <span class="pool-link__fx">{{ e.text }}</span>
+        </div>
+        <div class="pool-link__fempty" *ngIf="feed.length === 0">En attente d'échanges…</div>
+    </div>
+</div>

@@ -200,33 +200,10 @@
             </div>
         </div>
 
-        <!-- Chart -->
+        <!-- Liaison Pool (remplace le graphe Hashrate/Temp) -->
         <div class="grid-stack-item" gs-id="chart">
             <div class="grid-stack-item-content">
-                <ng-container *ngIf="!info.power_fault">
-                    <div class="card">
-                        <form [formGroup]="form">
-                            <div class="flex flex-nowrap justify-content-between mb-3">
-                                <p-dropdown
-                                    [options]="chartDataSources"
-                                    optionLabel="name"
-                                    optionValue="value"
-                                    formControlName="chartY1Data"
-                                    styleClass="w-10rem border-100 p-dropdown--small">
-                                </p-dropdown>
-                                <p-dropdown
-                                    [options]="chartDataSources"
-                                    optionLabel="name"
-                                    optionValue="value"
-                                    formControlName="chartY2Data"
-                                    styleClass="w-10rem border-100 p-dropdown--small">
-                                </p-dropdown>
-                            </div>
-
-                            <p-chart #chart id="chart" [data]="chartData" [options]="chartOptions"></p-chart>
-                        </form>
-                    </div>
-                </ng-container>
+                <app-pool-link></app-pool-link>
             </div>
         </div>
 
