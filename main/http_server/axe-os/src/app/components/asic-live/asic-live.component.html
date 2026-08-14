@@ -4,9 +4,13 @@
             <i class="pi pi-bolt"></i>
             Calculs ASIC en direct
         </span>
-        <span class="asic-live__live">
-            <span class="asic-live__dot"></span>
-            en direct
+        <span class="asic-live__meta">
+            <span class="asic-live__stat asic-live__stat--rec" *ngIf="bestDiff > 0">record <b>{{ bestDiffLabel }}</b></span>
+            <span class="asic-live__stat" *ngIf="perMin > 0"><b>{{ perMin }}</b>/min</span>
+            <span class="asic-live__live">
+                <span class="asic-live__dot"></span>
+                en direct
+            </span>
         </span>
     </div>
 
@@ -17,15 +21,20 @@
     </div>
 
     <div class="asic-live__feed">
-        <div class="asic-live__row" *ngFor="let r of results">
+        <div class="asic-live__row" *ngFor="let r of results" [class.asic-live__row--rec]="r.record">
             <span class="asic-live__core">{{ r.core }}</span>
             <span class="asic-live__nonce">{{ r.nonce }}</span>
-            <span class="asic-live__diff">{{ r.diff }}</span>
+            <span class="asic-live__diff">
+                <span class="asic-live__bar"><i [style.width.%]="r.width" [style.background]="r.color"></i></span>
+                <span class="asic-live__val" [style.color]="r.color">{{ r.diff }}</span>
+                <span class="asic-live__badge asic-live__badge--rec" *ngIf="r.record">RECORD</span>
+                <span class="asic-live__badge" *ngIf="r.top">TOP</span>
+            </span>
         </div>
         <div class="asic-live__empty" *ngIf="results.length === 0">
             En attente des premières solutions…
         </div>
     </div>
 
-    <div class="asic-live__foot">Chaque ligne = une solution que ta puce vient de calculer.</div>
+    <div class="asic-live__foot">Couleur = force de la solution ; plus c'est fort, plus ça vire à l'or.</div>
 </div>

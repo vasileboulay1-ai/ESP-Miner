@@ -13,11 +13,15 @@ export class CoreMapComponent implements OnInit, OnDestroy {
 
   public cells: number[] = Array.from({ length: CoreMapComponent.N }, (_, i) => i);
   public counts: number[] = new Array(CoreMapComponent.N).fill(0);
-  public bg: string[] = new Array(CoreMapComponent.N).fill('rgba(100,116,139,0.12)');
+  public bg: string[] = new Array(CoreMapComponent.N).fill('rgb(22,32,46)');
+  public fg: string[] = new Array(CoreMapComponent.N).fill('rgba(231,238,245,0.55)');
+  public glow: string[] = new Array(CoreMapComponent.N).fill('none');
   public total = 0;
   public activeCount = 0;
+  public maxCount = 0;
+  public hotCore = -1;
 
-  private heat: number[] = new Array(CoreMapComponent.N).fill(0);
+  private flash: number[] = new Array(CoreMapComponent.N).fill(0);
   private sub?: Subscription;
   private buffer = '';
   private decayTimer?: any;
@@ -37,7 +41,7 @@ export class CoreMapComponent implements OnInit, OnDestroy {
       },
       error: () => { /* la carte reste froide */ }
     });
-    this.decayTimer = setInterval(() => this.decay(), 150);
+    this.decayTimer = setInterval(() => this.decay(), 120);
   }
 
   ngOnDestroy(): void {
@@ -65,29 +69,64 @@ export class CoreMapComponent implements OnInit, OnDestroy {
       this.activeCount++;   // premier hit de ce coeur -> il "existe" reellement
     }
     this.counts[c]++;
-    this.heat[c] = 1;
     this.total++;
+    this.flash[c] = 1;
+    this.glow[c] = this.glowFor(1);
+
+    if (this.counts[c] > this.maxCount) {
+      this.maxCount = this.counts[c];
+      this.hotCore = c;
+      this.repaintAll();          // le max a bougé -> toute l'échelle de chaleur change
+    } else {
+      this.paint(c);
+    }
   }
 
+  // Base persistante : teinte = nombre CUMULÉ de solutions du coeur (donnee reelle, pas un clignotement).
+  private paint(i: number): void {
+    const t = this.maxCount ? this.counts[i] / this.maxCount : 0;
+    this.bg[i] = this.heatColor(t);
+    this.fg[i] = t > 0.55 ? 'rgba(16,22,12,0.9)' : 'rgba(231,238,245,0.82)';
+  }
+
+  private repaintAll(): void {
+    for (let i = 0; i < CoreMapComponent.N; i++) {
+      this.paint(i);
+    }
+  }
+
+  // Halo bref quand un coeur vient de calculer, par-dessus la base.
   private decay(): void {
     for (let i = 0; i < CoreMapComponent.N; i++) {
-      if (this.heat[i] > 0.01) {
-        this.heat[i] *= 0.88;
-        this.bg[i] = this.color(this.heat[i]);
-      } else if (this.heat[i] !== 0) {
-        this.heat[i] = 0;
-        this.bg[i] = this.color(0);
+      if (this.flash[i] > 0.02) {
+        this.flash[i] *= 0.82;
+        this.glow[i] = this.glowFor(this.flash[i]);
+      } else if (this.flash[i] !== 0) {
+        this.flash[i] = 0;
+        this.glow[i] = 'none';
       }
     }
   }
 
-  // Dégradé thermique : froid (ardoise) -> chaud (ambre)
-  private color(h: number): string {
-    const t = Math.min(1, Math.max(0, h));
-    const r = Math.round(100 + 149 * t);
-    const g = Math.round(116 + 52 * t);
-    const b = Math.round(139 - 102 * t);
-    const a = (0.12 + 0.85 * t).toFixed(2);
-    return `rgba(${r},${g},${b},${a})`;
+  private glowFor(f: number): string {
+    if (f <= 0.02) {
+      return 'none';
+    }
+    return `0 0 ${Math.round(2 + 8 * f)}px rgba(255,224,138,${(0.15 + 0.55 * f).toFixed(2)})`;
+  }
+
+  // Dégradé thermique : froid (ardoise) -> chaud (ambre) selon le nombre cumulé.
+  private heatColor(t: number): string {
+    const x = Math.min(1, Math.max(0, t));
+    const stops = [[22, 32, 46], [42, 74, 85], [65, 214, 138], [240, 178, 60]];
+    const p = x * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(p));
+    const f = p - i;
+    const a = stops[i];
+    const b = stops[i + 1];
+    const r = Math.round(a[0] + (b[0] - a[0]) * f);
+    const g = Math.round(a[1] + (b[1] - a[1]) * f);
+    const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+    return `rgb(${r},${g},${bl})`;
   }
 }

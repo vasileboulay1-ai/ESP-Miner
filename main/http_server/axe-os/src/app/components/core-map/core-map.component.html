@@ -4,9 +4,12 @@
             <i class="pi pi-th-large"></i>
             Carte des cœurs ASIC
         </span>
-        <span class="core-map__live">
-            <span class="core-map__dot"></span>
-            {{ activeCount }} cœurs actifs · {{ total }} solutions
+        <span class="core-map__meta">
+            <span class="core-map__stat" *ngIf="hotCore >= 0">cœur chaud <b>#{{ hotCore }}</b></span>
+            <span class="core-map__live">
+                <span class="core-map__dot"></span>
+                {{ activeCount }} cœurs · {{ total }} solutions
+            </span>
         </span>
     </div>
 
@@ -14,16 +17,19 @@
         <div class="core-map__cell"
              *ngFor="let c of cells; trackBy: trackIdx"
              [class.core-map__cell--idle]="counts[c] === 0"
+             [class.core-map__cell--hot]="c === hotCore"
              [style.background]="bg[c]"
+             [style.color]="fg[c]"
+             [style.box-shadow]="glow[c]"
              [title]="'Cœur ' + c + ' : ' + counts[c] + ' solutions'">
             {{ counts[c] || '' }}
         </div>
     </div>
 
     <div class="core-map__legend">
-        <span>Froid</span>
+        <span>peu</span>
         <span class="core-map__bar"></span>
-        <span>Vient de calculer</span>
+        <span>beaucoup de solutions</span>
     </div>
-    <div class="core-map__foot">Chaque case = un cœur ; le chiffre = le nombre de solutions trouvées.</div>
+    <div class="core-map__foot">La teinte = nombre cumulé de solutions par cœur ; le plus actif est encadré.</div>
 </div>
