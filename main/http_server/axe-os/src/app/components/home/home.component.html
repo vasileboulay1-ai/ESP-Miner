@@ -541,34 +541,9 @@
                 <div class="card">
                     <h4 class="white-space-nowrap overflow-hidden text-overflow-ellipsis">Hashrate Registers</h4>
 
-                    <ng-container *ngIf="asicsAmount as asicAmount">
-                        <table class="heatmap text-{{asicAmount <= 2 ? 'sm' : 'xs'}}">
-                            <thead>
-                                <tr>
-                                    <th *ngIf="asicAmount > 1" class="text-left">ASIC</th>
-                                    <ng-container *ngIf="asicDomainsAmount as asicDomainsAmount">
-                                        <th *ngIf="asicDomainsAmount > 0" [attr.colspan]="asicDomainsAmount">
-                                            {{ asicDomainsAmount == 1 ? "Domain" : "Domains" }}
-                                        </th>
-                                    </ng-container>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <tr class="cursor-pointer" *ngFor="let asic of info.hashrateMonitor?.asics; let i = index; trackBy: trackByIndex"
-                                        [pTooltip]="(asicAmount > 1 ? 'ASIC ' + (i + 1) + ' - ' : '') + 'Error count: ' + asic.errorCount"
-                                        tooltipPosition="bottom">
-                                    <td *ngIf="asicAmount > 1" class="text-500 text-left">
-                                        {{ i + 1 }}
-                                    </td>
-                                <td *ngFor="let domain of asic?.domains; trackBy: trackByIndex"
-                                    [style.backgroundColor]="getHeatmapColor(domain, info.expectedHashrate)"
-                                        [style.height]="(asicAmount <= 2 ? '2rem' : null)"
-                                        class="text-center">
-                                        <span class="text-xs">{{ domain | hashSuffix }}</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <ng-container *ngIf="info.hashrateMonitor?.asics as asics">
+                        <app-domain-bars *ngFor="let asic of asics; let i = index; trackBy: trackByIndex"
+                                         [asic]="asic" [index]="i" [showLabel]="asics.length > 1"></app-domain-bars>
                     </ng-container>
                 </div>
             </div>

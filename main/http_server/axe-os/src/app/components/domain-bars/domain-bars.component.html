@@ -1,0 +1,21 @@
+<div class="dbars">
+    <div class="dbars__asiclabel" *ngIf="showLabel">ASIC {{ index + 1 }}</div>
+
+    <div class="dbars__row" *ngFor="let d of domains; let di = index">
+        <span class="dbars__name">Domaine {{ di + 1 }}</span>
+        <span class="dbars__track">
+            <span class="dbars__fill" [style.width.%]="fill(d)" [style.background]="color(d)"></span>
+        </span>
+        <span class="dbars__val">
+            {{ d | hashSuffix }}
+            <span class="dbars__flag dbars__flag--top" *ngIf="flag(d) === 'FORT'">FORT</span>
+            <span class="dbars__flag dbars__flag--low" *ngIf="flag(d) === 'BAS'">BAS</span>
+        </span>
+    </div>
+
+    <div class="dbars__summary" *ngIf="domains.length">
+        <span>Total <b>{{ total | hashSuffix }}</b></span>
+        <span>Moyenne <b>{{ mean | hashSuffix }}</b></span>
+        <span>Écart <b>{{ spread }} %</b></span>
+    </div>
+</div>

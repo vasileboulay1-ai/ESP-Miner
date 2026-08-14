@@ -1,0 +1,76 @@
+.dbars {
+    &__asiclabel {
+        font-family: monospace;
+        font-size: 11px;
+        opacity: 0.6;
+        margin: 4px 0 8px;
+    }
+
+    &__row {
+        display: grid;
+        grid-template-columns: 84px 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 5px 0;
+    }
+
+    &__name {
+        font-family: monospace;
+        font-size: 12px;
+        opacity: 0.7;
+    }
+
+    &__track {
+        height: 24px;
+        border-radius: 8px;
+        background: rgba(128, 128, 128, 0.1);
+        border: 1px solid var(--surface-border, rgba(128, 128, 128, 0.2));
+        overflow: hidden;
+    }
+
+    &__fill {
+        display: block;
+        height: 100%;
+        border-radius: 7px 0 0 7px;
+        transition: width 0.5s ease, background 0.3s ease;
+    }
+
+    &__val {
+        font-family: monospace;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    &__flag {
+        font-family: monospace;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        padding: 1px 5px;
+        border-radius: 4px;
+        margin-left: 6px;
+
+        &--top { background: #41d68a; color: #08150e; }
+        &--low { background: #f0b23c; color: #1a1408; }
+    }
+
+    &__summary {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--surface-border, rgba(128, 128, 128, 0.15));
+        font-family: monospace;
+        font-size: 12px;
+        opacity: 0.8;
+
+        b { font-weight: 600; opacity: 1; }
+    }
+}
+
+@media (max-width: 480px) {
+    .dbars__row { grid-template-columns: 64px 1fr auto; gap: 8px; }
+}

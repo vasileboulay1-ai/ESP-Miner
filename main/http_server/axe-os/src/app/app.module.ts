@@ -25,6 +25,7 @@ import { LogsComponent } from './components/logs/logs.component';
 import { AsicLiveComponent } from './components/asic-live/asic-live.component';
 import { CoreMapComponent } from './components/core-map/core-map.component';
 import { PoolLinkComponent } from './components/pool-link/pool-link.component';
+import { DomainBarsComponent } from './components/domain-bars/domain-bars.component';
 import { SystemComponent } from './components/system/system.component';
 import { UpdateComponent } from './components/update/update.component';
 import { NetworkComponent } from './components/network/network.component';
@@ -63,6 +64,7 @@ const components = [
   AsicLiveComponent,
   CoreMapComponent,
   PoolLinkComponent,
+  DomainBarsComponent,
   SystemComponent,
   UpdateComponent,
   PoolComponent
