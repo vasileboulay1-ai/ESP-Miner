@@ -129,19 +129,22 @@ export class PoolLinkComponent implements OnInit, OnDestroy {
       return;
     }
     const d = document.createElement('div');
-    d.className = 'pool-link__pkt';
-    d.style.background = color;
-    d.style.boxShadow = '0 0 9px ' + color;
+    // Styles en INLINE : un élément créé en JS ne reçoit pas l'attribut de scope Angular,
+    // donc les styles du .scss (encapsulés) ne s'appliqueraient pas -> point invisible.
+    d.style.cssText =
+      'position:absolute;top:50%;width:11px;height:11px;border-radius:50%;' +
+      'transform:translate(-50%,-50%);z-index:2;pointer-events:none;' +
+      'background:' + color + ';box-shadow:0 0 11px ' + color + ';left:' + (up ? '2%' : '98%') + ';';
     cable.appendChild(d);
     try {
       const anim = d.animate(
         [
-          { left: up ? '2%' : '98%', opacity: 0.15 },
+          { left: up ? '2%' : '98%', opacity: 0.2 },
           { offset: 0.12, opacity: 1 },
           { offset: 0.88, opacity: 1 },
-          { left: up ? '98%' : '2%', opacity: 0.15 }
+          { left: up ? '98%' : '2%', opacity: 0.2 }
         ],
-        { duration: 1100, easing: 'linear' });
+        { duration: 1150, easing: 'linear' });
       anim.onfinish = () => d.remove();
     } catch {
       d.remove();
