@@ -80,9 +80,14 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
     cJSON_AddNumberToObject(root, "jobsSent", asic_perf_stats.jobs_sent);
     cJSON_AddNumberToObject(root, "dupFiltered", asic_perf_stats.dup_filtered);
     {
-        double produced = (double) g->SYSTEM_MODULE.shares_accepted + (double) g->SYSTEM_MODULE.shares_rejected + (double) asic_perf_stats.dup_filtered;
-        double useful = (produced > 0.0) ? ((double) g->SYSTEM_MODULE.shares_accepted / produced) * 100.0 : 100.0;
-        cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) useful);
+        // usefulWorkRatio = OCCUPATION reelle de l'ASIC = hashrate mesure (10m) / theorique.
+        // (L'ancienne definition melangeait doublons internes filtres et shares pool -> non pertinente,
+        //  elle lisait 40 a 99 % selon le ratio. dupFiltered reste expose separement pour le re-balayage.)
+        double theo = (double) g->POWER_MANAGEMENT_MODULE.expected_hashrate;
+        double occ = (theo > 0.0) ? ((double) g->SYSTEM_MODULE.hashrate_10m / theo) * 100.0 : 0.0;
+        if (occ > 100.0) occ = 100.0;   // l'estimateur court terme peut depasser le theorique
+        if (occ < 0.0) occ = 0.0;
+        cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) occ);
     }
 
     // Dynamic Block Info

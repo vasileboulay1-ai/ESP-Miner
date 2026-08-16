@@ -22,6 +22,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "asic_perf_monitor.h"
+
 #define MAX_RETRY_ATTEMPTS 3
 #define TRANSPORT_TIMEOUT_MS 5000
 #define SV2_MAX_FRAME_SIZE 2048
@@ -205,6 +207,7 @@ static void stratum_v2_enqueue_job(GlobalState *GLOBAL_STATE, sv2_conn_t *conn,
         free(old);
     }
 
+    asic_perf_notify(clean_jobs);   // T0 reaction nouveau bloc (parite avec le hook V1)
     queue_enqueue(&GLOBAL_STATE->stratum_queue, job);
 }
 
@@ -225,6 +228,7 @@ static void stratum_v2_enqueue_ext_job(GlobalState *GLOBAL_STATE, sv2_conn_t *co
         sv2_ext_job_free((sv2_ext_job_t *)old);
     }
 
+    asic_perf_notify(job->clean_jobs);   // T0 reaction nouveau bloc (parite avec le hook V1)
     queue_enqueue(&GLOBAL_STATE->stratum_queue, job);
 }
 
