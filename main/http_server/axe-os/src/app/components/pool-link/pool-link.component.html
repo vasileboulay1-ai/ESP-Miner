@@ -11,6 +11,7 @@
                 <span class="pool-link__sdot"></span>
                 {{ connected ? (fallback ? 'connecté · fallback' : 'connecté · principal') : 'déconnecté' }}
             </span>
+            <span class="pool-link__proto" *ngIf="proto">{{ proto }}</span>
             <span class="pool-link__lat">latence <b>{{ latency }}</b></span>
         </span>
     </div>

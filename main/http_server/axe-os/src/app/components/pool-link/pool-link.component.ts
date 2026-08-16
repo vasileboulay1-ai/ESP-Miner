@@ -31,6 +31,7 @@ export class PoolLinkComponent implements OnInit, OnDestroy {
   public bestSession = '—';
   public jobs = 0;
   public latency = '— ms';
+  public proto = '';
   public feed: Exchange[] = [];
 
   private readonly C = { up: '#35d0c0', ok: '#41d68a', bad: '#f2735f', job: '#9b8bff' };
@@ -89,20 +90,53 @@ export class PoolLinkComponent implements OnInit, OnDestroy {
     this.bestSession = i.bestSessionDiff != null ? this.human(i.bestSessionDiff) : '—';
   }
 
-  // Le flux WS porte les vrais messages Stratum : on en fait des paquets + un journal.
+  // Le flux WS porte les vrais messages Stratum (V1 JSON ou V2 binaire) : on en fait des paquets + un journal.
   private parseLine(line: string): void {
     const l = line.replace(/\x1b\[[0-9;]*m/g, '');
     let m: RegExpMatchArray | null;
+
+    // --- Stratum V2 ---
+    if ((m = l.match(/Shares accepted:\s*\d+\s*\(([\d.]+)\s*ms\)/))) {
+      this.proto = 'SV2';
+      this.latency = m[1] + ' ms';
+      this.spawnPacket(true, this.C.up);                          // la share monte
+      this.event(false, this.C.ok, 'acceptée ✓ ' + m[1] + ' ms'); // la réponse descend
+      return;
+    }
+    if (l.indexOf('Shares rejected') >= 0) {
+      this.proto = 'SV2';
+      this.event(false, this.C.bad, 'refusée ✗');
+      return;
+    }
+    if (l.indexOf('New extended mining job') >= 0) {
+      this.proto = 'SV2';
+      this.jobs++;
+      this.event(false, this.C.job, 'nouveau job');
+      return;
+    }
+
+    // --- Stratum V1 ---
     if (l.indexOf('mining.submit') >= 0 && l.indexOf('tx:') >= 0) {
+      this.proto = 'V1';
       m = l.match(/"id":\s*(\d+)/);
       this.event(true, this.C.up, 'share envoyée' + (m ? ' #' + m[1] : ''));
-    } else if (l.indexOf('message result accepted') >= 0) {
+      return;
+    }
+    if (l.indexOf('message result accepted') >= 0) {
+      this.proto = 'V1';
       this.event(false, this.C.ok, 'acceptée ✓ ' + this.latency);
-    } else if (l.indexOf('message result rejected') >= 0) {
+      return;
+    }
+    if (l.indexOf('message result rejected') >= 0) {
       this.event(false, this.C.bad, 'refusée ✗');
-    } else if ((m = l.match(/Stratum response time:\s*([\d.]+)\s*ms/))) {
+      return;
+    }
+    if ((m = l.match(/Stratum response time:\s*([\d.]+)\s*ms/))) {
       this.latency = m[1] + ' ms';
-    } else if (l.indexOf('mining.notify') >= 0) {
+      return;
+    }
+    if (l.indexOf('mining.notify') >= 0) {
+      this.proto = 'V1';
       const pm = l.match(/"params":\s*\[\s*"[0-9A-Fa-f]*"\s*,\s*"([0-9A-Fa-f]+)"/);
       const prevhash = pm ? pm[1] : '';
       const newBlock = !!prevhash && prevhash !== this.lastPrevhash && this.lastPrevhash !== '';
@@ -111,6 +145,7 @@ export class PoolLinkComponent implements OnInit, OnDestroy {
       }
       this.jobs++;
       this.event(false, this.C.job, newBlock ? 'nouveau bloc ⛓' : 'nouveau job');
+      return;
     }
   }
 
