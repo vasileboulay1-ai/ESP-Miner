@@ -160,7 +160,11 @@ void ASIC_result_task(void *pvParameters)
 
         // Preuve de bloc en location (observation seule) - APRES le submit, jamais avant :
         // aucun retard de soumission, aucune allocation, aucune securite touchee.
-        rental_proof_update_mode(GLOBAL_STATE->SYSTEM_MODULE.pool_connection_info,
+        // NB: pool_connection_info vaut "IPv4"/"IPv6" (type de connexion), PAS l'URL.
+        // L'URL courante est dans pool_url / fallback_pool_url (chargees depuis la NVS a l'init).
+        rental_proof_update_mode(GLOBAL_STATE->SYSTEM_MODULE.is_using_fallback
+                                     ? GLOBAL_STATE->SYSTEM_MODULE.fallback_pool_url
+                                     : GLOBAL_STATE->SYSTEM_MODULE.pool_url,
                                  GLOBAL_STATE->SYSTEM_MODULE.is_using_fallback
                                      ? GLOBAL_STATE->SYSTEM_MODULE.fallback_pool_user
                                      : GLOBAL_STATE->SYSTEM_MODULE.pool_user);
