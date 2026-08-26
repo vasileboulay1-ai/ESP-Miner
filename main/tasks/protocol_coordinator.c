@@ -136,11 +136,32 @@ static bool has_fallback_pool(GlobalState *gs)
             gs->SYSTEM_MODULE.fallback_pool_url[0] != '\0');
 }
 
+// Priorite des taches stratum (reception des mining.notify = ARRIVEE d'un nouveau bloc).
+//
+// AVANT : 5, donc SOUS "power management" (10) qui fait des lectures I2C bloquantes
+// toutes les 100 ms -> inversion de priorite sur le chemin critique. Mesure a l'appui :
+// newBlockReaction moyenne 6,9 ms mais MAX 75,5 ms (jitter x10,9), alors que la
+// construction du job (prio 20) ne jitte qu'a x2,6.
+//
+// APRES : 12, soit sous asic_result (15) et create_jobs (20) -- le chemin ASIC garde
+// la priorite absolue -- mais AU-DESSUS de la telemetrie (10), dont l'echeance se
+// compte en secondes. La tache stratum passe l'essentiel de son temps bloquee en
+// recv() (elle rend la main), elle ne peut donc pas affamer les autres.
+//
+// Mettre 0 pour revenir au comportement d'origine (A/B).
+#define STRATUM_TASK_PRIO_BOOST 1
+
+#if STRATUM_TASK_PRIO_BOOST
+#define STRATUM_TASK_PRIORITY 12
+#else
+#define STRATUM_TASK_PRIORITY 5
+#endif
+
 // Start the V1 stratum task (for primary V1 or fallback)
 static void start_v1_task(GlobalState *gs)
 {
     s_v1_should_shutdown = false;
-    if (xTaskCreate(stratum_v1_task, "stratum v1", 8192, (void *)gs, 5, NULL) != pdPASS) {
+    if (xTaskCreate(stratum_v1_task, "stratum v1", 8192, (void *)gs, STRATUM_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create V1 stratum task");
     }
 }
@@ -149,7 +170,7 @@ static void start_v1_task(GlobalState *gs)
 static void start_v2_task(GlobalState *gs)
 {
     s_v2_should_shutdown = false;
-    if (xTaskCreate(stratum_v2_task, "stratum v2", 12288, (void *)gs, 5, NULL) != pdPASS) {
+    if (xTaskCreate(stratum_v2_task, "stratum v2", 12288, (void *)gs, STRATUM_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create V2 stratum task");
     }
 }
