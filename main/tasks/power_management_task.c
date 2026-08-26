@@ -32,9 +32,20 @@
 #define GOV_TEMP_HIGH       64.0f   // au-dessus : on baisse la frequence (v5 : 63->64, zone morte elargie)
 #define GOV_TEMP_LOW        60.0f   // en dessous (ET puissance OK) : on remonte (v5 : 61->60, anti-oscillation)
 #define GOV_TEMP_EMERGENCY  65.0f   // plafond dur temperature : baisse renforcee
-#define GOV_POWER_HIGH      29.3f   // au-dessus : on baisse la frequence (Watts)
-#define GOV_POWER_LOW       28.3f   // en dessous (ET temp OK) : on remonte (Watts)
-#define GOV_POWER_EMERGENCY 29.9f   // plafond dur puissance : baisse renforcee (Watts)
+// ---- Budget d'ALIMENTATION configurable (NVS "powerLimit", defaut 30 W) ----
+// Les seuils sont DERIVES du budget en gardant exactement les marges d'origine :
+// a 30 W on retrouve 29.9 / 29.3 / 28.3 (comportement identique a avant).
+// Borne haute = max_power declare par la carte (40 W sur la 601) : on ne depasse
+// JAMAIS ce que le materiel annonce, meme si l'utilisateur demande plus.
+#define GOV_PWR_MARGIN_EMERG 0.1f   // budget - 0.1  -> plafond dur
+#define GOV_PWR_MARGIN_HIGH  0.7f   // budget - 0.7  -> throttle
+#define GOV_PWR_MARGIN_LOW   1.7f   // budget - 1.7  -> autorise a remonter
+#define GOV_PWR_MIN_BUDGET   15.0f  // garde-fou bas
+static float gov_power_budget = 30.0f;   // budget effectif (W), relu depuis la NVS
+static const char * gov_status = "Stable";   // pourquoi le gouverneur plafonne (API/UI)
+#define GOV_POWER_HIGH      (gov_power_budget - GOV_PWR_MARGIN_HIGH)
+#define GOV_POWER_LOW       (gov_power_budget - GOV_PWR_MARGIN_LOW)
+#define GOV_POWER_EMERGENCY (gov_power_budget - GOV_PWR_MARGIN_EMERG)
 #define GOV_FREQ_MIN        400.0f  // frequence plancher (MHz)
 #define GOV_FREQ_STEP       25.0f   // pas d'ajustement (MHz)
 #define GOV_INTERVAL_CYCLES 100     // 100 x POLL_RATE(100ms) = ajuste toutes les ~10s
@@ -422,6 +433,21 @@ void POWER_MANAGEMENT_task(void * pvParameters)
         // Ajuste la frequence effective selon la temperature, toutes les ~10s (hors self-test).
         if (!GLOBAL_STATE->SELF_TEST_MODULE.is_active && ++gov_counter >= GOV_INTERVAL_CYCLES) {
             gov_counter = 0;
+
+            // Budget alimentation : relu ici (toutes les ~10 s) pour prise en compte a chaud,
+            // sans reflasher. Borne DURE par ce que la carte declare supporter.
+            {
+                float hw_max = (float) GLOBAL_STATE->DEVICE_CONFIG.family.max_power;
+                float budget = (float) nvs_config_get_u16(NVS_CONFIG_POWER_LIMIT);
+                if (budget < GOV_PWR_MIN_BUDGET) budget = GOV_PWR_MIN_BUDGET;
+                if (hw_max > 0.0f && budget > hw_max) budget = hw_max;   // jamais au-dessus du materiel
+                if (budget != gov_power_budget) {
+                    ESP_LOGI(TAG, "[GOVERNOR] Budget alimentation : %.0f W -> %.0f W (throttle %.1f / secours %.1f)",
+                             gov_power_budget, budget, budget - GOV_PWR_MARGIN_HIGH, budget - GOV_PWR_MARGIN_EMERG);
+                    gov_power_budget = budget;
+                }
+            }
+
             float t = power_management->chip_temp_avg;
             if (power_management->chip_temp2_avg > t) t = power_management->chip_temp2_avg;
             float p = power_management->power;
@@ -441,11 +467,22 @@ void POWER_MANAGEMENT_task(void * pvParameters)
 #endif
             if ((t >= GOV_TEMP_EMERGENCY || p >= GOV_POWER_EMERGENCY || vr_vhot) && gov_effective_freq > GOV_FREQ_MIN) {
                 gov_effective_freq -= (GOV_FREQ_STEP * 2.0f);   // urgence temp / puissance / VRM tres chaud
+                gov_status = vr_vhot ? "VRM limited" : (p >= GOV_POWER_EMERGENCY ? "Power limited" : "Thermal limited");
             } else if ((t >= GOV_TEMP_HIGH || p >= GOV_POWER_HIGH || vin_low || vr_hot) && gov_effective_freq > GOV_FREQ_MIN) {
                 if (vin_low) gov_vin_ceiling = gov_effective_freq - GOV_FREQ_STEP;  // memorise le plafond input
                 gov_effective_freq -= GOV_FREQ_STEP;            // trop chaud / trop de watts / input < 5V / VRM chaud : on baisse
+                gov_status = vr_hot ? "VRM limited"
+                           : (p >= GOV_POWER_HIGH ? "Power limited"
+                           : (vin_low ? "Input voltage limited" : "Thermal limited"));
             } else if (t <= GOV_TEMP_LOW && p <= GOV_POWER_LOW && !vr_hot && gov_effective_freq < gov_target_freq && gov_effective_freq < gov_vin_ceiling) {
                 gov_effective_freq += GOV_FREQ_STEP;            // frais, marge de watts, input OK ET VRM frais : on remonte
+                gov_status = "Ramping up";
+            } else if (gov_effective_freq < gov_target_freq) {
+                // On ne peut pas remonter alors que la cible n'est pas atteinte : dire pourquoi.
+                gov_status = (p > GOV_POWER_LOW) ? "Power limited"
+                           : (t > GOV_TEMP_LOW ? "Thermal limited" : "Stable");
+            } else {
+                gov_status = "Stable";                          // cible atteinte
             }
 
             if (gov_effective_freq < GOV_FREQ_MIN) gov_effective_freq = GOV_FREQ_MIN;
@@ -609,4 +646,14 @@ void POWER_MANAGEMENT_task(void * pvParameters)
         // looper:
         vTaskDelay(POLL_RATE / portTICK_PERIOD_MS);
     }
+}
+
+const char * POWER_MANAGEMENT_get_status(void)
+{
+    return gov_status;
+}
+
+float POWER_MANAGEMENT_get_power_budget(void)
+{
+    return gov_power_budget;
 }

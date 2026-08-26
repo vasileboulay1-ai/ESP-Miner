@@ -15,6 +15,7 @@
 #include "stratum_v2_task.h"
 #include "asic_perf_monitor.h"
 #include "rental_proof.h"
+#include "power_management_task.h"
 #include <time.h>
 
 
@@ -91,6 +92,12 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
         if (occ < 0.0) occ = 0.0;
         cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) occ);
     }
+
+    // ASIC Auto Tuning : budget d'alimentation + raison du plafonnement
+    cJSON_AddFloatToObject(root, "powerBudget", POWER_MANAGEMENT_get_power_budget());
+    cJSON_AddNumberToObject(root, "powerLimitHw", g->DEVICE_CONFIG.family.max_power);
+    cJSON_AddStringToObject(root, "autoTuneStatus", POWER_MANAGEMENT_get_status());
+    cJSON_AddFloatToObject(root, "targetFrequency", nvs_config_get_float(NVS_CONFIG_ASIC_FREQUENCY));
 
     // Rental / Block Success (preuve seule - aucun prelevement, cf. etude de faisabilite)
     cJSON_AddBoolToObject(root, "rentalActive", rental_proof.rental_active);

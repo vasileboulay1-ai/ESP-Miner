@@ -133,6 +133,10 @@ static Settings settings[NVS_CONFIG_COUNT] = {
 
     // Perfection Edition : mode de l'auto-tuner. false = Efficacite (tension mini) ; true = Stabilite (tension max, erreurs mini)
     [NVS_CONFIG_TUNER_STABILITY]                       = {.nvs_key_name = "tuner_stab",      .type = TYPE_BOOL,  .default_value = {.b   = false},                                       .rest_name = "tunerStability",                     .min = 0,  .max = 1},
+    // Budget de l'ALIMENTATION (W). Le gouverneur en derive ses seuils de throttle.
+    // min 15 = plancher raisonnable ; max 40 = maximum declare par la carte (family.max_power).
+    // NE remplace AUCUNE securite : les limites thermiques/VRM/watchdog restent actives.
+    [NVS_CONFIG_POWER_LIMIT]                           = {.nvs_key_name = "powerlimit",      .type = TYPE_U16,   .default_value = {.u16 = 30},                                          .rest_name = "powerLimit",                         .min = 15, .max = 40},
 };
 
 Settings *nvs_config_get_settings(NvsConfigKey key)

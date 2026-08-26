@@ -22,4 +22,11 @@ void POWER_MANAGEMENT_init_frequency(void * pvParameters);
 
 void POWER_MANAGEMENT_task(void * pvParameters);
 
+// Etat de l'auto-tuning / gouverneur, pour l'API et l'interface :
+// "Stable", "Power limited", "Thermal limited", "VRM limited", "Input voltage limited".
+const char * POWER_MANAGEMENT_get_status(void);
+
+// Budget d'alimentation effectivement applique (W), apres bornage materiel.
+float POWER_MANAGEMENT_get_power_budget(void);
+
 #endif
