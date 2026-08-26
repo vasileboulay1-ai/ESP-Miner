@@ -15,6 +15,7 @@
 #include "scoreboard.h"
 #include "self_test.h"
 #include "asic_perf_monitor.h"
+#include "rental_proof.h"
 
 static const char *TAG = "asic_result";
 
@@ -156,6 +157,15 @@ void ASIC_result_task(void *pvParameters)
                 }
             }
         }
+
+        // Preuve de bloc en location (observation seule) - APRES le submit, jamais avant :
+        // aucun retard de soumission, aucune allocation, aucune securite touchee.
+        rental_proof_update_mode(GLOBAL_STATE->SYSTEM_MODULE.pool_connection_info,
+                                 GLOBAL_STATE->SYSTEM_MODULE.is_using_fallback
+                                     ? GLOBAL_STATE->SYSTEM_MODULE.fallback_pool_user
+                                     : GLOBAL_STATE->SYSTEM_MODULE.pool_user);
+        rental_proof_on_result(active_job, asic_result->nonce, asic_result->rolled_version,
+                               nonce_diff, nonce_diff >= active_job->pool_diff);
 
         //log the ASIC response
         ESP_LOGI(TAG, "ID: %s, ASIC nr: %d, Core: %d/%d, ver: %08" PRIX32 " Nonce %08" PRIX32 " diff %.1f of %g.", active_job->jobid, asic_result->asic_nr, asic_result->core_id, asic_result->small_core_id, asic_result->rolled_version, asic_result->nonce, nonce_diff, active_job->pool_diff);

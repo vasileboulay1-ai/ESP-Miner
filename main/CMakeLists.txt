@@ -12,6 +12,7 @@ SRCS
     "system.c"
     "notify_whatsapp.c"
     "asic_perf_monitor.c"
+    "rental_proof.c"
     "work_queue.c"
     "lv_font_portfolio-6x8.c"
     "logo.c"

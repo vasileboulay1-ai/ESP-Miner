@@ -1,0 +1,47 @@
+<div class="card mb-0 rblock">
+    <div class="rblock__head">
+        <span class="rblock__title">
+            <i class="pi pi-verified"></i>
+            Location &amp; preuve de bloc
+        </span>
+        <span class="rblock__badge" [class.rblock__badge--on]="rentalActive">
+            {{ rentalActive ? 'Location active' : 'Hors location' }}
+        </span>
+    </div>
+
+    <div class="rblock__grid">
+        <div class="rblock__row"><span>Fournisseur</span><b>{{ rentalActive ? 'MiningRigRentals' : '—' }}</b></div>
+        <div class="rblock__row"><span>Pool</span><b class="rblock__ell">{{ pool }}</b></div>
+        <div class="rblock__row"><span>Worker</span><b class="rblock__ell">{{ worker }}</b></div>
+        <div class="rblock__row"><span>Durée</span><b>{{ elapsed }}</b></div>
+        <div class="rblock__row"><span>Shares soumises</span><b>{{ shares }}</b></div>
+        <div class="rblock__row"><span>Meilleure share</span><b>{{ bestShare }}</b></div>
+        <div class="rblock__row"><span>Difficulté réseau</span><b>{{ networkDiff }}</b></div>
+        <div class="rblock__row"><span>Block candidates</span><b>{{ candidates }}</b></div>
+    </div>
+
+    <div class="rblock__state" [class.rblock__state--hit]="hasCandidate">
+        <div class="rblock__sline">
+            <span class="rblock__slabel">État du bloc</span>
+            <span class="rblock__sval">{{ blockState }}</span>
+        </div>
+        <div class="rblock__hash" *ngIf="hasCandidate">
+            <div class="rblock__hlabel">Hash du bloc (preuve)</div>
+            <code>{{ candidateHash }}</code>
+            <a [href]="explorerUrl" target="_blank" rel="noopener">Vérifier on-chain ↗</a>
+        </div>
+        <div class="rblock__none" *ngIf="!hasCandidate">
+            Aucun block candidate détecté sur cette session.
+        </div>
+    </div>
+
+    <div class="rblock__fee">
+        <div class="rblock__row"><span>Success fee (contractuel)</span><b>{{ feePercent | number:'1.2-2' }} %</b></div>
+        <div class="rblock__row"><span>Règlement</span><b class="rblock__manual">{{ settlement }}</b></div>
+        <div class="rblock__note">
+            S'applique uniquement aux blocs confirmés trouvés pendant une location.
+            Le prélèvement automatique n'est pas possible : la récompense est versée par le pool du locataire.
+            Cette carte fournit la <b>preuve</b>, pas le paiement.
+        </div>
+    </div>
+</div>

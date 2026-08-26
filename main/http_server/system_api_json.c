@@ -14,6 +14,8 @@
 #include "statistics_task.h"
 #include "stratum_v2_task.h"
 #include "asic_perf_monitor.h"
+#include "rental_proof.h"
+#include <time.h>
 
 
 static const char *get_reset_reason_str(esp_reset_reason_t reason)
@@ -89,6 +91,21 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
         if (occ < 0.0) occ = 0.0;
         cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) occ);
     }
+
+    // Rental / Block Success (preuve seule - aucun prelevement, cf. etude de faisabilite)
+    cJSON_AddBoolToObject(root, "rentalActive", rental_proof.rental_active);
+    cJSON_AddNumberToObject(root, "rentalElapsedS",
+        rental_proof.rental_active ? (double)(time(NULL) - rental_proof.rental_start_s) : 0);
+    cJSON_AddStringToObject(root, "rentalWorker", rental_proof.worker);
+    cJSON_AddNumberToObject(root, "rentalShares", rental_proof.shares_submitted);
+    cJSON_AddFloatToObject(root, "rentalBestShare", (float) rental_proof.best_share_diff);
+    cJSON_AddFloatToObject(root, "networkDifficulty", (float) rental_proof.network_diff);
+    cJSON_AddStringToObject(root, "blockState", rental_proof_state_str());
+    cJSON_AddNumberToObject(root, "blockCandidates", rental_proof.candidates);
+    cJSON_AddStringToObject(root, "blockCandidateHash", rental_proof.block_hash);
+    cJSON_AddBoolToObject(root, "blockDuringRental", rental_proof.cand_during_rental);
+    cJSON_AddFloatToObject(root, "blockSuccessFeePercent", rental_proof.fee_percent);
+    cJSON_AddStringToObject(root, "blockSettlement", "MANUAL");
 
     // Dynamic Block Info
     cJSON_AddNumberToObject(root, "blockFound", g->SYSTEM_MODULE.block_found);
