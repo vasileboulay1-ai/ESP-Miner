@@ -1,0 +1,45 @@
+<div class="card mb-0 netcard">
+    <div class="netcard__head">
+        <span class="netcard__title">
+            <i class="pi pi-sitemap"></i>
+            Réseau
+        </span>
+        <span class="netcard__active" [class.netcard__active--eth]="onEthernet">
+            Interface active : <b>{{ active }}</b>
+        </span>
+    </div>
+
+    <div class="netcard__grid">
+        <div class="netcard__col" [class.netcard__col--on]="onEthernet">
+            <div class="netcard__ctitle">
+                <span class="netcard__dot" [class.netcard__dot--up]="ethHasIp" [class.netcard__dot--warn]="ethLinkUp && !ethHasIp"></span>
+                Ethernet
+            </div>
+            <div class="netcard__off" *ngIf="!ethEnabled">
+                Désactivé — nécessite un adaptateur USB CDC-ECM et un hub alimenté.
+            </div>
+            <ng-container *ngIf="ethEnabled">
+                <div class="netcard__row"><span>État</span><b>{{ ethHasIp ? 'Connecté' : (ethLinkUp ? 'Lien OK, sans IP' : 'Déconnecté') }}</b></div>
+                <div class="netcard__row" *ngIf="ethChipset"><span>Chipset</span><b>{{ ethChipset }}</b></div>
+                <div class="netcard__row"><span>IP</span><b>{{ ethIp || '—' }}</b></div>
+                <div class="netcard__row"><span>Passerelle</span><b>{{ ethGateway || '—' }}</b></div>
+                <div class="netcard__row"><span>MAC</span><b class="netcard__small">{{ ethMac || '—' }}</b></div>
+            </ng-container>
+        </div>
+
+        <div class="netcard__col" [class.netcard__col--on]="!onEthernet">
+            <div class="netcard__ctitle">
+                <span class="netcard__dot" [class.netcard__dot--up]="wifiStatus?.length > 0"></span>
+                Wi-Fi
+            </div>
+            <div class="netcard__row"><span>État</span><b>{{ wifiStatus || '—' }}</b></div>
+            <div class="netcard__row"><span>SSID</span><b>{{ ssid || '—' }}</b></div>
+            <div class="netcard__row"><span>IP</span><b>{{ wifiIp || '—' }}</b></div>
+            <div class="netcard__row"><span>Signal</span><b>{{ rssi }} dBm <span class="netcard__q">({{ rssiLabel }})</span></b></div>
+        </div>
+    </div>
+
+    <div class="netcard__foot">
+        L'interface active est choisie automatiquement par la pile réseau : Ethernet prioritaire dès qu'il a une IP, bascule Wi-Fi sinon — sans redémarrage.
+    </div>
+</div>

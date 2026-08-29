@@ -16,6 +16,7 @@
 #include "asic_perf_monitor.h"
 #include "rental_proof.h"
 #include "power_management_task.h"
+#include "net_manager.h"
 #include <time.h>
 
 
@@ -92,6 +93,16 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
         if (occ < 0.0) occ = 0.0;
         cJSON_AddFloatToObject(root, "usefulWorkRatio", (float) occ);
     }
+
+    // Reseau : interface active (Ethernet USB / Wi-Fi)
+    cJSON_AddStringToObject(root, "activeNetwork", net_manager_active());
+    cJSON_AddBoolToObject(root, "ethEnabled", net_manager_eth_enabled());
+    cJSON_AddBoolToObject(root, "ethLinkUp", net_manager_eth_link_up());
+    cJSON_AddBoolToObject(root, "ethHasIp", net_manager_eth_has_ip());
+    cJSON_AddStringToObject(root, "ethIp", net_manager_eth_ip());
+    cJSON_AddStringToObject(root, "ethGateway", net_manager_eth_gw());
+    cJSON_AddStringToObject(root, "ethMac", net_manager_eth_mac());
+    cJSON_AddStringToObject(root, "ethChipset", net_manager_chipset());
 
     // ASIC Auto Tuning : budget d'alimentation + raison du plafonnement
     cJSON_AddFloatToObject(root, "powerBudget", POWER_MANAGEMENT_get_power_budget());
