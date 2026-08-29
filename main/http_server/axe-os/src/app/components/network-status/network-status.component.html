@@ -29,7 +29,7 @@
 
         <div class="netcard__col" [class.netcard__col--on]="!onEthernet">
             <div class="netcard__ctitle">
-                <span class="netcard__dot" [class.netcard__dot--up]="wifiStatus?.length > 0"></span>
+                <span class="netcard__dot" [class.netcard__dot--up]="wifiStatus.length > 0"></span>
                 Wi-Fi
             </div>
             <div class="netcard__row"><span>État</span><b>{{ wifiStatus || '—' }}</b></div>
