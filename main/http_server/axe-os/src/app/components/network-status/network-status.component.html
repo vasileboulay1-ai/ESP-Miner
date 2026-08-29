@@ -23,6 +23,7 @@
                 <div class="netcard__row" *ngIf="ethChipset"><span>Chipset</span><b>{{ ethChipset }}</b></div>
                 <div class="netcard__row"><span>IP</span><b>{{ ethIp || '—' }}</b></div>
                 <div class="netcard__row"><span>Passerelle</span><b>{{ ethGateway || '—' }}</b></div>
+                <div class="netcard__row"><span>DNS</span><b>{{ ethDns || '—' }}</b></div>
                 <div class="netcard__row"><span>MAC</span><b class="netcard__small">{{ ethMac || '—' }}</b></div>
             </ng-container>
         </div>

@@ -101,6 +101,7 @@ static void system_api_add_telemetry(cJSON *root, GlobalState *g) {
     cJSON_AddBoolToObject(root, "ethHasIp", net_manager_eth_has_ip());
     cJSON_AddStringToObject(root, "ethIp", net_manager_eth_ip());
     cJSON_AddStringToObject(root, "ethGateway", net_manager_eth_gw());
+    cJSON_AddStringToObject(root, "ethDns", net_manager_eth_dns());
     cJSON_AddStringToObject(root, "ethMac", net_manager_eth_mac());
     cJSON_AddStringToObject(root, "ethChipset", net_manager_chipset());
 

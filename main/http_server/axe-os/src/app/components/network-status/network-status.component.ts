@@ -14,6 +14,7 @@ export class NetworkStatusComponent implements OnInit, OnDestroy {
   public ethHasIp = false;
   public ethIp = '';
   public ethGateway = '';
+  public ethDns = '';
   public ethMac = '';
   public ethChipset = '';
 
@@ -58,6 +59,7 @@ export class NetworkStatusComponent implements OnInit, OnDestroy {
         this.ethHasIp = !!i.ethHasIp;
         this.ethIp = i.ethIp || '';
         this.ethGateway = i.ethGateway || '';
+        this.ethDns = i.ethDns || '';
         this.ethMac = i.ethMac || '';
         this.ethChipset = i.ethChipset || '';
         this.ssid = i.ssid || '';

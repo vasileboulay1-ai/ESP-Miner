@@ -7,6 +7,7 @@
 #include "global_state.h"
 #include "screen.h"
 #include "nvs_config.h"
+#include "net_manager.h"
 #include "display.h"
 #include "connect.h"
 #include "esp_timer.h"
@@ -522,7 +523,17 @@ static void screen_update_cb(lv_timer_t * timer)
         lv_label_set_text(urls_mining_url_label, pool_url);
     }
 
-    if (strcmp(lv_label_get_text(urls_ip_addr_label), module->ip_addr_str) != 0) {
+    // Indicateur d'interface : prefixe ETH/WiFi devant l'IP, UNIQUEMENT si l'Ethernet
+    // USB est active. Sinon l'affichage reste strictement identique a avant.
+    if (net_manager_eth_enabled()) {
+        char ip_line[48];
+        snprintf(ip_line, sizeof(ip_line), "%s %s",
+                 net_manager_eth_has_ip() ? "ETH" : "WiFi",
+                 net_manager_eth_has_ip() ? net_manager_eth_ip() : module->ip_addr_str);
+        if (strcmp(lv_label_get_text(urls_ip_addr_label), ip_line) != 0) {
+            lv_label_set_text(urls_ip_addr_label, ip_line);
+        }
+    } else if (strcmp(lv_label_get_text(urls_ip_addr_label), module->ip_addr_str) != 0) {
         lv_label_set_text(urls_ip_addr_label, module->ip_addr_str);
     }
 

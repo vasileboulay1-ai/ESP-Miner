@@ -14,6 +14,8 @@
 #include "iot_usbh_ecm.h"
 #include "iot_eth.h"
 #include "iot_eth_netif_glue.h"
+#include "iot_usbh_cdc.h"
+#include "usb/usb_host.h"
 #define NET_ETH_SUPPORTED 1
 #else
 #define NET_ETH_SUPPORTED 0
@@ -21,15 +23,16 @@
 
 static const char *TAG = "net";
 
-// Chipsets USB->Ethernet CDC-ECM valides par Espressif pour ce driver.
-// Les puces proprietaires (RTL8153 0BDA:8153, AX88179) sont volontairement absentes :
-// elles n'exposent aucune interface standard et ne peuvent pas fonctionner.
+// Table d'identification (affichage seulement) : le firmware accepte N'IMPORTE QUEL
+// adaptateur et lit son VID/PID reel. Cette table sert uniquement a nommer le chipset.
 typedef struct { uint16_t vid; uint16_t pid; const char *name; } ecm_known_t;
 static const ecm_known_t s_known[] = {
-    { 0x1A86, 0x5397, "CH397A"   },   // WCH CH397A
-    { 0x0BDA, 0x8152, "RTL8152B" },   // Realtek RTL8152B (variante ECM)
-    { 0x0B95, 0x7720, "AX88772"  },   // ASIX AX88772 (variantes ECM)
-    { 0x2C7C, 0x0125, "NX7202D"  },   // module type NX7202D
+    { 0x1A86, 0x5397, "CH397A"   },
+    { 0x0BDA, 0x8152, "RTL8152B" },
+    { 0x0BDA, 0x8153, "RTL8153"  },
+    { 0x0B95, 0x7720, "AX88772"  },
+    { 0x0B95, 0x1790, "AX88179"  },
+    { 0x2C7C, 0x0125, "NX7202D"  },
 };
 #define ECM_KNOWN_COUNT (sizeof(s_known) / sizeof(s_known[0]))
 
@@ -38,12 +41,39 @@ static bool s_link_up   = false;
 static bool s_has_ip    = false;
 static char s_ip[16]    = "";
 static char s_gw[16]    = "";
+static char s_dns[16]   = "";
 static char s_mac[18]   = "";
 static char s_chipset[24] = "";
 
 #if NET_ETH_SUPPORTED
 static iot_eth_driver_t *s_eth_driver = NULL;
 static esp_netif_t      *s_eth_netif  = NULL;
+
+
+// Lit le VID/PID REEL de l'adaptateur branche (aucune supposition de chipset).
+static void log_adapter_identity(void)
+{
+    usbh_cdc_port_handle_t port = usb_ecm_get_cdc_port_handle(s_eth_driver);
+    if (port == NULL) return;
+    usb_device_handle_t dev = NULL;
+    if (usbh_cdc_get_dev_handle(port, &dev) != ESP_OK || dev == NULL) return;
+    usb_device_info_t info;
+    if (usb_host_device_info(dev, &info) != ESP_OK) return;
+    const usb_device_desc_t *d = NULL;
+    if (usb_host_get_device_descriptor(dev, &d) != ESP_OK || d == NULL) return;
+
+    const char *name = "inconnu";
+    for (size_t i = 0; i < sizeof(s_known) / sizeof(s_known[0]); i++) {
+        if (s_known[i].vid == d->idVendor && s_known[i].pid == d->idProduct) {
+            name = s_known[i].name;
+            break;
+        }
+    }
+    snprintf(s_chipset, sizeof(s_chipset), "%s", name);
+    ESP_LOGI(TAG, "[USB] Ethernet adapter detected");
+    ESP_LOGI(TAG, "[USB] VID:%04X PID:%04X class:%02X (%s)",
+             d->idVendor, d->idProduct, d->bDeviceClass, name);
+}
 
 static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -53,6 +83,7 @@ static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *dat
             break;
         case IOT_ETH_EVENT_CONNECTED:
             s_link_up = true;
+            log_adapter_identity();
             ESP_LOGI(TAG, "[ETH] Link UP");
             break;
         case IOT_ETH_EVENT_DISCONNECTED:
@@ -84,7 +115,11 @@ static void on_eth_got_ip(void *arg, esp_event_base_t base, int32_t id, void *da
         snprintf(s_mac, sizeof(s_mac), "%02X:%02X:%02X:%02X:%02X:%02X",
                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
-    ESP_LOGI(TAG, "[ETH] DHCP IP: %s (gw %s)", s_ip, s_gw);
+    esp_netif_dns_info_t dns;
+    if (esp_netif_get_dns_info(s_eth_netif, ESP_NETIF_DNS_MAIN, &dns) == ESP_OK) {
+        snprintf(s_dns, sizeof(s_dns), IPSTR, IP2STR(&dns.ip.u_addr.ip4));
+    }
+    ESP_LOGI(TAG, "[ETH] IP: %s (gw %s, dns %s)", s_ip, s_gw, s_dns);
     ESP_LOGI(TAG, "[NET] Active interface: Ethernet");
 }
 #endif // NET_ETH_SUPPORTED
@@ -102,26 +137,13 @@ void net_manager_init(void)
 #else
     ESP_LOGI(TAG, "[ETH] Initialisation de l'Ethernet USB (mode host)");
 
-    // Liste de correspondance : les chipsets ECM connus. Le driver la conserve.
-    usb_device_match_id_t *match = calloc(ECM_KNOWN_COUNT + 1, sizeof(usb_device_match_id_t));
-    if (match == NULL) {
-        ESP_LOGE(TAG, "[ETH] Memoire insuffisante pour la liste USB");
-        return;
-    }
-    for (size_t i = 0; i < ECM_KNOWN_COUNT; i++) {
-        match[i].match_flags = USB_DEVICE_ID_MATCH_VID_PID;
-        match[i].idVendor    = s_known[i].vid;
-        match[i].idProduct   = s_known[i].pid;
-    }
-    memset(&match[ECM_KNOWN_COUNT], 0, sizeof(usb_device_match_id_t));   // fin de liste
-
-    iot_usbh_ecm_config_t ecm_cfg = { .match_id_list = match };
+    // Detection GENERIQUE : on accepte tout peripherique USB et on lit son VID/PID.
+    // C'est le driver ECM qui verifiera ensuite s'il expose bien une interface CDC-ECM.
+    iot_usbh_ecm_config_t ecm_cfg = { .match_id_list = ESP_USB_DEVICE_MATCH_ID_ANY };
     if (iot_eth_new_usb_ecm(&ecm_cfg, &s_eth_driver) != ESP_OK || s_eth_driver == NULL) {
         ESP_LOGE(TAG, "[ETH] Creation du driver ECM impossible");
-        free(match);
         return;
     }
-    // A partir d'ici la liste appartient au driver : ne pas la liberer.
 
     iot_eth_handle_t eth_handle = NULL;
     iot_eth_config_t eth_cfg = { .driver = s_eth_driver, .stack_input = NULL };
@@ -172,6 +194,7 @@ bool net_manager_eth_link_up(void) { return s_link_up; }
 bool net_manager_eth_has_ip(void)  { return s_has_ip; }
 const char *net_manager_eth_ip(void)   { return s_ip; }
 const char *net_manager_eth_gw(void)   { return s_gw; }
+const char *net_manager_eth_dns(void)  { return s_dns; }
 const char *net_manager_eth_mac(void)  { return s_mac; }
 const char *net_manager_chipset(void)  { return s_chipset; }
 

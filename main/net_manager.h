@@ -39,6 +39,7 @@ bool        net_manager_eth_has_ip(void);    // DHCP obtenu
 const char *net_manager_active(void);        // "Ethernet" | "Wi-Fi" | "None"
 const char *net_manager_eth_ip(void);
 const char *net_manager_eth_gw(void);
+const char *net_manager_eth_dns(void);
 const char *net_manager_eth_mac(void);
 const char *net_manager_chipset(void);       // chipset detecte (ou "")
 
