@@ -19,6 +19,7 @@
 #include "bap/bap.h"
 #include "device_config.h"
 #include "connect.h"
+#include "net_manager.h"
 #include "asic_reset.h"
 #include "asic_init.h"
 #include "task_monitor.h"
@@ -100,6 +101,9 @@ void app_main(void)
 
     if (!GLOBAL_STATE.SELF_TEST_MODULE.is_active) {
         wifi_init(&GLOBAL_STATE);
+        // Ethernet USB (adaptateur CDC-ECM). Ne fait rien tant que la cle NVS
+        // "ethEnable" est false -> comportement historique strictement inchange.
+        net_manager_init();
     }
 
     esp_err_t system_init_ret = SYSTEM_init_peripherals(&GLOBAL_STATE);

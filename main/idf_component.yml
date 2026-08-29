@@ -2,7 +2,10 @@
 dependencies:
   lvgl/lvgl: "9.3.0"
   espressif/esp_lvgl_port: "2.6.3"
-  esp_lcd_sh1107: "1.1.0"  
+  esp_lcd_sh1107: "1.1.0"
+  ## Ethernet USB (adaptateur CDC-ECM sur le port USB-C, mode host).
+  ## Driver officiel Espressif, cible esp32s3. Integre a esp_netif via iot_eth.
+  espressif/iot_usbh_ecm: "^0.4.0"
   ## Required IDF version
   idf:
     version: ">=5.5.0"

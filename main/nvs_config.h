@@ -92,6 +92,8 @@ typedef enum {
     // Perfection Edition : mode de l'auto-tuner (false = Efficacite, true = Stabilite / erreurs mini)
     NVS_CONFIG_TUNER_STABILITY,
     NVS_CONFIG_POWER_LIMIT,
+    NVS_CONFIG_ETH_ENABLE,
+    NVS_CONFIG_NET_PRIORITY,
 
     NVS_CONFIG_COUNT
 } NvsConfigKey;

@@ -137,6 +137,11 @@ static Settings settings[NVS_CONFIG_COUNT] = {
     // min 15 = plancher raisonnable ; max 40 = maximum declare par la carte (family.max_power).
     // NE remplace AUCUNE securite : les limites thermiques/VRM/watchdog restent actives.
     [NVS_CONFIG_POWER_LIMIT]                           = {.nvs_key_name = "powerlimit",      .type = TYPE_U16,   .default_value = {.u16 = 30},                                          .rest_name = "powerLimit",                         .min = 15, .max = 40},
+    // Ethernet USB (adaptateur CDC-ECM). DESACTIVE par defaut : tant que c'est false,
+    // le port USB-C reste en USB-Serial/JTAG et le comportement est inchange.
+    [NVS_CONFIG_ETH_ENABLE]                            = {.nvs_key_name = "ethenable",      .type = TYPE_BOOL,  .default_value = {.b   = false},                                       .rest_name = "ethEnable",                          .min = 0,  .max = 1},
+    // Priorite reseau : 0 = AUTO (Ethernet prioritaire, Wi-Fi secours), 1 = Ethernet, 2 = Wi-Fi.
+    [NVS_CONFIG_NET_PRIORITY]                          = {.nvs_key_name = "netprio",        .type = TYPE_U16,   .default_value = {.u16 = 0},                                           .rest_name = "netPriority",                        .min = 0,  .max = 2},
 };
 
 Settings *nvs_config_get_settings(NvsConfigKey key)
